@@ -7,75 +7,52 @@ module pe #(
     input  logic                    clk,
     input  logic                    rst_n,
 
-    // Weight loading interface
-    input  logic                    en_weight_pass,
-    input  logic                    en_weight_capture,
-    input  logic [DATA_WIDTH-1:0]   weight_in,
+    // Control signals (tinytinyTPU compatible)
+    input  logic                    en_weight_pass,    // Pass psum through (always during load phase)
+    input  logic                    en_weight_capture, // Capture weight from psum (per-PE timing for diagonal)
 
-    // Activation input (flows right through systolic array)
-    input  logic [DATA_WIDTH-1:0]   act_in,
-
-    // Partial sum input (flows down through systolic array)
-    input  logic [ACC_WIDTH-1:0]    psum_in,
+    // Data inputs (tinytinyTPU compatible interface)
+    input  logic [DATA_WIDTH-1:0]   act_in,            // Activation input (flows right)
+    input  logic [ACC_WIDTH-1:0]    psum_in,           // Partial sum input (flows down)
 
     // Outputs
-    output logic [DATA_WIDTH-1:0]   act_out,     // Activation flows right
-    output logic [ACC_WIDTH-1:0]    psum_out     // Partial sum flows down
+    output logic [DATA_WIDTH-1:0]   act_out,           // Activation flows right
+    output logic [ACC_WIDTH-1:0]    psum_out           // Partial sum flows down
 );
 
 // =============================================================================
 // INTERNAL SIGNALS
 // =============================================================================
 
-// Weight register
+// Weight register (loaded from psum input path like tinytinyTPU)
 logic [DATA_WIDTH-1:0] weight_reg;
 
-// Multiply-Accumulate result
-logic signed [DATA_WIDTH*2-1:0] mult_result;
-logic signed [ACC_WIDTH-1:0]    mac_result;
-
 // =============================================================================
-// WEIGHT REGISTER
+// PE LOGIC (tinytinyTPU compatible)
 // =============================================================================
 
-// Weight capture logic (systolic weight loading)
-always_ff @(posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-        weight_reg <= {DATA_WIDTH{1'b0}};
-    end else if (en_weight_capture) begin
-        weight_reg <= weight_in;
-    end
-end
-
-// =============================================================================
-// MULTIPLY-ACCUMULATE LOGIC
-// =============================================================================
-
-// Synchronous MAC operation
-always_ff @(posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-        mac_result <= {ACC_WIDTH{1'b0}};
-    end else begin
-        // MAC: psum_out = psum_in + (act_in * weight_reg)
-        mult_result = $signed(act_in) * $signed(weight_reg);
-        mac_result  = $signed(psum_in) + $signed(mult_result);
-    end
-end
-
-// =============================================================================
-// OUTPUT ASSIGNMENTS
-// =============================================================================
-
-// Activation flows right (registered for systolic timing)
 always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         act_out <= {DATA_WIDTH{1'b0}};
-    end else begin
-        act_out <= act_in;
+        psum_out <= {ACC_WIDTH{1'b0}};
+        weight_reg <= {DATA_WIDTH{1'b0}};
+    end
+    else begin
+        if (en_weight_pass) begin
+            // Weight loading mode: pass psum through, reset activation
+            psum_out <= psum_in;
+            act_out <= {DATA_WIDTH{1'b0}};
+            // Capture weight only when this PE's capture signal is active
+            if (en_weight_capture) begin
+                weight_reg <= psum_in[DATA_WIDTH-1:0];  // Extract weight from lower bits
+            end
+        end
+        else begin
+            // Compute mode: MAC operation
+            act_out <= act_in;
+            psum_out <= psum_in + (act_in * weight_reg);  // Simplified MAC for compatibility
+        end
     end
 end
-
-// Partial sum output (MAC result flows down)
-assign psum_out = mac_result;
 
 endmodule

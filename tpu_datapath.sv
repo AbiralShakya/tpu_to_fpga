@@ -32,17 +32,16 @@ module tpu_datapath (
 // INTERNAL SIGNALS
 // =============================================================================
 
-// Systolic array connections
-logic [23:0] weight_to_sys;      // Weights to systolic array (3x8-bit)
-logic [23:0] act_to_sys;         // Activations to systolic array (3x8-bit)
-logic [95:0] psum_col0_out;      // Column 0 partial sums (3x32-bit)
-logic [95:0] psum_col1_out;      // Column 1 partial sums (3x32-bit)
-logic [95:0] psum_col2_out;      // Column 2 partial sums (3x32-bit)
+// Systolic array connections (tinytinyTPU compatible)
+logic [7:0] row0_act, row1_act, row2_act;  // Separate row activations
+logic [7:0] col0_wt, col1_wt, col2_wt;     // Separate column weights
+logic [31:0] acc0_out, acc1_out, acc2_out; // Direct accumulator outputs
 
 // Systolic controller signals
 logic        en_weight_pass;
 logic        en_capture_col0;
 logic        en_capture_col1;
+logic        en_capture_col2;
 logic        systolic_active;
 
 // Accumulator connections
@@ -91,6 +90,7 @@ systolic_controller systolic_ctrl (
     .en_weight_pass  (en_weight_pass),
     .en_capture_col0 (en_capture_col0),
     .en_capture_col1 (en_capture_col1),
+    .en_capture_col2 (en_capture_col2),
     .systolic_active (systolic_active)
 );
 
@@ -98,21 +98,30 @@ systolic_controller systolic_ctrl (
 // WEIGHT FIFO (DOUBLE-BUFFERED)
 // =============================================================================
 
-weight_fifo weight_fifo_inst (
-    .clk             (clk),
-    .rst_n           (rst_n),
-    .wt_buf_sel      (wt_buf_sel),
-    .wt_num_tiles    (8'h10),        // Fixed for now
-    .wr_en           (wt_fifo_wr),
-    .wr_data         (wt_fifo_data),
-    .wr_full         (wt_wr_full),
-    .wr_almost_full  (),             // Not connected
-    .rd_en           (wt_rd_en),
-    .rd_data         (weight_to_sys),
-    .rd_empty        (wt_rd_empty),
-    .rd_almost_empty (),             // Not connected
-    .wt_load_done    (wt_load_done)
+// Dual Weight FIFO (tinytinyTPU compatible)
+logic wf_push_col0, wf_push_col1, wf_push_col2;
+logic wf_pop;
+
+dual_weight_fifo weight_fifo_inst (
+    .clk       (clk),
+    .rst_n     (rst_n),
+    .push_col0 (wf_push_col0),
+    .push_col1 (wf_push_col1),
+    .push_col2 (wf_push_col2),
+    .data_in   (wt_fifo_data[7:0]),  // Use lower 8 bits for shared bus
+    .pop       (wf_pop),
+    .col0_out  (col0_wt),
+    .col1_out  (col1_wt),
+    .col2_out  (col2_wt),
+    .col1_raw  (),                  // Not used
+    .col2_raw  ()                   // Not used
 );
+
+// Weight FIFO control logic (simplified for now)
+assign wf_push_col0 = wt_fifo_wr && (wt_fifo_data[9:8] == 2'b00);  // Tile ID in bits 9:8
+assign wf_push_col1 = wt_fifo_wr && (wt_fifo_data[9:8] == 2'b01);
+assign wf_push_col2 = wt_fifo_wr && (wt_fifo_data[9:8] == 2'b10);
+assign wf_pop = wt_rd_en;
 
 // =============================================================================
 // SYSTOLIC ARRAY (2x2 MMU)
@@ -125,11 +134,15 @@ mmu systolic_array (
     .en_capture_col0 (en_capture_col0),
     .en_capture_col1 (en_capture_col1),
     .en_capture_col2 (en_capture_col2),
-    .weight_data     (weight_to_sys),
-    .act_data        (act_to_sys),
-    .psum_col0_out   (psum_col0_out),
-    .psum_col1_out   (psum_col1_out),
-    .psum_col2_out   (psum_col2_out)
+    .row0_in         (row0_act),
+    .row1_in         (row1_act),
+    .row2_in         (row2_act),
+    .col0_in         (col0_wt),
+    .col1_in         (col1_wt),
+    .col2_in         (col2_wt),
+    .acc0_out        (acc0_out),
+    .acc1_out        (acc1_out),
+    .acc2_out        (acc2_out)
 );
 
 // =============================================================================
@@ -150,23 +163,92 @@ accumulator accumulators (
 );
 
 // =============================================================================
-// VPU (VECTOR PROCESSING UNIT)
+// ACTIVATION PIPELINES (tinytinyTPU compatible)
+// One pipeline per column for post-accumulator processing
 // =============================================================================
 
-vpu vpu_inst (
-    .clk          (clk),
-    .rst_n        (rst_n),
-    .vpu_start    (vpu_start),
-    .vpu_mode     (vpu_mode),
-    .vpu_in_addr  (8'h00),        // Fixed for now
-    .vpu_out_addr (8'h00),        // Fixed for now
-    .vpu_length   (8'h08),        // Process 8 values
-    .vpu_in_data  (acc_rd_data),
-    .vpu_out_data (vpu_out_data),
-    .vpu_out_valid(vpu_out_valid),
-    .vpu_busy     (vpu_busy),
-    .vpu_done     (vpu_done)
+// Activation pipeline configuration (runtime programmable)
+logic signed [15:0] norm_gain;
+logic signed [31:0] norm_bias;
+logic [4:0]  norm_shift;
+logic signed [15:0] q_inv_scale;
+logic signed [7:0]  q_zero_point;
+
+// Default configuration values
+assign norm_gain = 16'h0100;     // Gain = 1.0 (Q8.8)
+assign norm_bias = 32'sd0;       // No bias
+assign norm_shift = 5'd0;        // No shift
+assign q_inv_scale = 16'h0100;   // Scale = 1.0 (Q8.8)
+assign q_zero_point = 8'sd0;     // Zero point = 0
+
+// Extract individual accumulator outputs for pipelines
+logic signed [31:0] acc_col0, acc_col1, acc_col2;
+assign acc_col0 = acc_rd_data[31:0];    // Column 0
+assign acc_col1 = acc_rd_data[63:32];   // Column 1
+assign acc_col2 = acc_rd_data[95:64];   // Column 2
+
+// Activation pipelines for each column
+logic ap_valid_col0, ap_valid_col1, ap_valid_col2;
+logic signed [7:0] ap_data_col0, ap_data_col1, ap_data_col2;
+logic loss_valid_col0, loss_valid_col1, loss_valid_col2;
+logic signed [31:0] loss_col0, loss_col1, loss_col2;
+
+activation_pipeline ap_col0 (
+    .clk(clk),
+    .rst_n(rst_n),
+    .valid_in(acc_rd_en),  // Trigger when accumulator read happens
+    .acc_in(acc_col0),
+    .target_in(32'sd0),    // No loss computation for inference
+    .norm_gain(norm_gain),
+    .norm_bias(norm_bias),
+    .norm_shift(norm_shift),
+    .q_inv_scale(q_inv_scale),
+    .q_zero_point(q_zero_point),
+    .valid_out(ap_valid_col0),
+    .ub_data_out(ap_data_col0),
+    .loss_valid(loss_valid_col0),
+    .loss_out(loss_col0)
 );
+
+activation_pipeline ap_col1 (
+    .clk(clk),
+    .rst_n(rst_n),
+    .valid_in(acc_rd_en),
+    .acc_in(acc_col1),
+    .target_in(32'sd0),
+    .norm_gain(norm_gain),
+    .norm_bias(norm_bias),
+    .norm_shift(norm_shift),
+    .q_inv_scale(q_inv_scale),
+    .q_zero_point(q_zero_point),
+    .valid_out(ap_valid_col1),
+    .ub_data_out(ap_data_col1),
+    .loss_valid(loss_valid_col1),
+    .loss_out(loss_col1)
+);
+
+activation_pipeline ap_col2 (
+    .clk(clk),
+    .rst_n(rst_n),
+    .valid_in(acc_rd_en),
+    .acc_in(acc_col2),
+    .target_in(32'sd0),
+    .norm_gain(norm_gain),
+    .norm_bias(norm_bias),
+    .norm_shift(norm_shift),
+    .q_inv_scale(q_inv_scale),
+    .q_zero_point(q_zero_point),
+    .valid_out(ap_valid_col2),
+    .ub_data_out(ap_data_col2),
+    .loss_valid(loss_valid_col2),
+    .loss_out(loss_col2)
+);
+
+// Combine activation pipeline outputs
+assign vpu_out_valid = ap_valid_col0 || ap_valid_col1 || ap_valid_col2;
+assign vpu_out_data = {8'b0, ap_data_col2, ap_data_col1, ap_data_col0};  // Pack 3 bytes
+assign vpu_busy = 1'b0;  // Simplified - always ready
+assign vpu_done = vpu_out_valid;  // Done when output valid
 
 // =============================================================================
 // UNIFIED BUFFER (DUAL-PORT)
@@ -190,6 +272,20 @@ unified_buffer ub (
 );
 
 // =============================================================================
+// DATA EXTRACTION FOR SYSTOLIC ARRAY (tinytinyTPU compatible)
+// =============================================================================
+
+// Extract row activations from unified buffer (assuming 3 rows × 8-bit)
+assign row0_act = ub_rd_data[7:0];    // Row 0 activation
+assign row1_act = ub_rd_data[15:8];   // Row 1 activation
+assign row2_act = ub_rd_data[23:16];  // Row 2 activation
+
+// Extract column weights from weight FIFO (assuming 3 weights × 8-bit)
+assign col0_wt = wt_fifo_data[7:0];   // Column 0 weight
+assign col1_wt = wt_fifo_data[15:8];  // Column 1 weight
+assign col2_wt = wt_fifo_data[23:16]; // Column 2 weight
+
+// =============================================================================
 // DATA FLOW CONTROL
 // =============================================================================
 
@@ -199,7 +295,7 @@ assign act_to_sys = ub_rd_data[15:0];  // First 16 bits as activations
 // Accumulator write control
 assign acc_wr_en = systolic_active;
 assign acc_wr_addr = 8'h00;  // Fixed address for now
-assign acc_wr_data = {psum_col2_out, psum_col1_out, psum_col0_out};  // Concatenate 3 columns
+assign acc_wr_data = {acc2_out, acc1_out, acc0_out};  // Direct from MMU outputs
 
 // Accumulator read control (for VPU)
 assign acc_rd_en = vpu_start;

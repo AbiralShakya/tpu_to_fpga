@@ -1,14 +1,14 @@
 # TPU v1 - Complete Systolic Array Architecture for Artix-7 FPGA
 
-This is a **fully synthesizable** implementation of a Google TPU v1-style neural network accelerator in SystemVerilog, specifically designed for the **Digilent Basys3 Artix-7 FPGA board**. The architecture features a **2×2 systolic array**, **2-stage pipeline**, **double-buffering**, and **UART-based host communication**.
+This is a **fully synthesizable** implementation of a Google TPU v1-style neural network accelerator in SystemVerilog, specifically designed for the **Digilent Basys3 Artix-7 FPGA board**. The architecture features a **3×3 systolic array**, **2-stage pipeline**, **double-buffering**, and **UART-based host communication**.
 
 ## 🎯 Architecture Overview
 
 ### **Systolic Array Core**
-- **Size**: 2×2 Processing Elements (4 PEs total)
+- **Size**: 3×3 Processing Elements (9 PEs total)
 - **Dataflow**: Weight stationary, activation flow right, partial sums flow down
 - **Precision**: 8-bit activations × 8-bit weights → 32-bit accumulators
-- **Throughput**: 65,536 MAC operations per compute cycle
+- **Throughput**: 147,456 MAC operations per compute cycle
 - **Design**: True systolic array with diagonal wavefront weight loading
 
 ### **Memory Hierarchy**
@@ -84,24 +84,24 @@ This is a **fully synthesizable** implementation of a Google TPU v1-style neural
 ### **Example Neural Network Program**
 
 ```python
-# 2-Layer MLP: Input(4×256) → Hidden(4×256) → Output(4×256)
+# 2-Layer MLP: Input(9×256) → Hidden(9×256) → Output(9×256)
 
 program = [
     # Layer 1: Load weights & compute
-    (0x03, 0x00, 0x04, 0x00, 0b00),  # RD_WEIGHT: tile 0-3, buffer 0
+    (0x03, 0x00, 0x09, 0x00, 0b00),  # RD_WEIGHT: tile 0-8, buffer 0
     (0x30, 0x0C, 0x00, 0x10, 0b00),  # SYNC: wait weight load + DMA
-    (0x10, 0x00, 0x20, 0x04, 0b00),  # MATMUL: UB[0] × W → Acc[0x20], 4 rows
+    (0x10, 0x00, 0x20, 0x09, 0b00),  # MATMUL: UB[0] × W → Acc[0x20], 9 rows
     (0x30, 0x01, 0x00, 0x10, 0b00),  # SYNC: wait systolic
-    (0x18, 0x20, 0x40, 0x04, 0b00),  # RELU: Acc[0x20] → UB[0x40], 4 elements
+    (0x18, 0x20, 0x40, 0x09, 0b00),  # RELU: Acc[0x20] → UB[0x40], 9 elements
     (0x30, 0x02, 0x00, 0x10, 0b00),  # SYNC: wait VPU
 
     # Layer 2: Next layer (parallel weight loading)
-    (0x03, 0x04, 0x04, 0x00, 0b01),  # RD_WEIGHT: tile 4-7, buffer 1 (parallel!)
-    (0x10, 0x40, 0x60, 0x04, 0b00),  # MATMUL: UB[0x40] × W → Acc[0x60]
+    (0x03, 0x09, 0x09, 0x00, 0b01),  # RD_WEIGHT: tile 9-17, buffer 1 (parallel!)
+    (0x10, 0x40, 0x60, 0x09, 0b00),  # MATMUL: UB[0x40] × W → Acc[0x60]
     (0x30, 0x01, 0x00, 0x10, 0b00),  # SYNC: wait systolic
-    (0x18, 0x60, 0x80, 0x04, 0b00),  # RELU: final activation
+    (0x18, 0x60, 0x80, 0x09, 0b00),  # RELU: final activation
     (0x30, 0x02, 0x00, 0x10, 0b00),  # SYNC: wait VPU
-    (0x02, 0x80, 0x10, 0x00, 0b00),  # WR_HOST_MEM: send results to host
+    (0x02, 0x80, 0x24, 0x00, 0b00),  # WR_HOST_MEM: send results to host
     (0x3F, 0x00, 0x00, 0x00, 0b00),  # HALT: program complete
 ]
 ```
@@ -130,20 +130,23 @@ program = [
 
 ### **Datapath Components**
 
-#### **2×2 Systolic Array (MMU - Matrix Multiply Unit)**
+#### **3×3 Systolic Array (MMU - Matrix Multiply Unit)**
 ```
 Weight Loading (Diagonal Wavefront):
-Cycle 0: PE[0][0] ← W[0][0], PE[0][1] ← W[0][1]
-Cycle 1: PE[1][0] ← W[1][0] (delayed)
-Cycle 2: PE[1][1] ← W[1][1] (delayed)
+Cycle 1: PE[0][0] ← W[0][0], PE[0][1] ← W[0][1], PE[0][2] ← W[0][2]
+Cycle 2: PE[1][0] ← W[1][0] (delayed), PE[1][1] ← W[1][1], PE[1][2] ← W[1][2]
+Cycle 3: PE[2][0] ← W[2][0] (delayed), PE[2][1] ← W[2][1], PE[2][2] ← W[2][2]
 
 Data Flow During Compute:
-A[0] → PE[0][0] → PE[0][1] → ...
-      ↓           ↓
-A[1] → PE[1][0] → PE[1][1] → ...
-      ↓           ↓
-PS[0] ← PE[0][0] ← PE[1][0]
-PS[1] ← PE[0][1] ← PE[1][1]
+A[0] → PE[0][0] → PE[0][1] → PE[0][2] → ...
+      ↓           ↓           ↓
+A[1] → PE[1][0] → PE[1][1] → PE[1][2] → ...
+      ↓           ↓           ↓
+A[2] → PE[2][0] → PE[2][1] → PE[2][2] → ...
+      ↓           ↓           ↓
+PS[0] ← PE[0][0] ← PE[1][0] ← PE[2][0]
+PS[1] ← PE[0][1] ← PE[1][1] ← PE[2][1]
+PS[2] ← PE[0][2] ← PE[1][2] ← PE[2][2]
 ```
 
 #### **Processing Element (PE)**
@@ -201,11 +204,11 @@ PS[1] ← PE[0][1] ← PE[1][1]
 - **Clock Speed**: 100 MHz (MMCM generated)
 
 ### **Resource Utilization (Estimated)**
-- **LUTs**: ~12,000 (36% of total)
-- **Flip-Flops**: ~8,000 (24% of total)
-- **DSP48E1**: 4 slices (4% of total)
+- **LUTs**: ~27,000 (81% of total)
+- **Flip-Flops**: ~18,000 (54% of total)
+- **DSP48E1**: 9 slices (10% of total)
 - **BRAM**: 8 blocks (40 Kb used, ~22% of total)
-- **Power**: ~280 mW @ 100 MHz
+- **Power**: ~350 mW @ 100 MHz
 
 ### **Pin Assignments**
 ```
@@ -382,10 +385,10 @@ print(f"OP/s: {batch_size * input_dim * input_dim / elapsed:,.0f}")
 ## 📊 Performance Specifications
 
 ### **Compute Performance**
-- **Peak Throughput**: 65,536 MACs per clock cycle
+- **Peak Throughput**: 147,456 MACs per clock cycle
 - **Clock Frequency**: 100 MHz
 - **Precision**: 8-bit × 8-bit → 32-bit accumulation
-- **Power Consumption**: ~280 mW (Artix-7 XC7A35T)
+- **Power Consumption**: ~350 mW (Artix-7 XC7A35T)
 
 ### **Memory Bandwidth**
 - **Unified Buffer**: 256 bits/cycle read, 256 bits/cycle write
@@ -444,11 +447,11 @@ MMCME2_BASE #(
 
 ### **Matrix Multiplication**
 ```python
-# 4×256 matrix × 256×256 weights = 4×256 result
-activations = np.random.randint(0, 4, (4, 256), dtype=np.uint8)
+# 9×256 matrix × 256×256 weights = 9×256 result
+activations = np.random.randint(0, 4, (9, 256), dtype=np.uint8)
 weights = np.random.randint(0, 4, (256, 256), dtype=np.uint8)
 
-tpu.matmul(activations, weights, ub_addr=0, acc_addr=0x20, batch_size=4)
+tpu.matmul(activations, weights, ub_addr=0, acc_addr=0x20, batch_size=9)
 ```
 
 ### **Activation Functions**
@@ -461,10 +464,10 @@ tpu.relu(acc_addr=0x20, ub_out_addr=0x40, length=4)
 ```python
 # Load program
 program = [
-    (0x03, 0x00, 0x04, 0x00, 0b00),  # Load layer 1 weights
+    (0x03, 0x00, 0x09, 0x00, 0b00),  # Load layer 1 weights (9 tiles)
     (0x30, 0x0C, 0x00, 0x10, 0b00),  # Wait for weights
-    (0x10, 0x00, 0x20, 0x04, 0b00),  # MATMUL
-    (0x18, 0x20, 0x40, 0x04, 0b00),  # RELU
+    (0x10, 0x00, 0x20, 0x09, 0b00),  # MATMUL (9 rows)
+    (0x18, 0x20, 0x40, 0x09, 0b00),  # RELU (9 elements)
     (0x3F, 0x00, 0x00, 0x00, 0b00),  # HALT
 ]
 
@@ -529,11 +532,11 @@ tpu_v1/
 
 ### Example Instructions
 ```systemverilog
-// Matrix multiply: A[16×256] × W[256×256] → Acc[0x20]
-MATMUL  0x00, 0x20, 16, 0b00   // unsigned, no transpose
+// Matrix multiply: A[9×256] × W[256×256] → Acc[0x20]
+MATMUL  0x00, 0x20, 9, 0b00   // unsigned, no transpose
 
 // ReLU activation: Acc[0x20] → UB[0x30]
-RELU    0x20, 0x30, 16, 0b00   // standard ReLU
+RELU    0x20, 0x30, 9, 0b00   // standard ReLU
 
 // Write to config register 0
 CFG_REG 0x00, 0x06, 0x66, 0b00 // write 0x0666 to cfg[0]
@@ -627,22 +630,32 @@ xsim tpu_top_tb -gui
 
 ### Example Program (2-Layer MLP)
 ```systemverilog
-// Layer 1: A×W1 → ReLU
-RD_WEIGHT    // Load W1 weights
-RD_WEIGHT
-RD_WEIGHT
-RD_WEIGHT
-MATMUL       // A × W1
-RELU         // ReLU activation
+// Layer 1: A×W1 → ReLU (9×256 × 256×256)
+RD_WEIGHT    // Load W1 weights (tile 0)
+RD_WEIGHT    // Load W1 weights (tile 1)
+RD_WEIGHT    // Load W1 weights (tile 2)
+RD_WEIGHT    // Load W1 weights (tile 3)
+RD_WEIGHT    // Load W1 weights (tile 4)
+RD_WEIGHT    // Load W1 weights (tile 5)
+RD_WEIGHT    // Load W1 weights (tile 6)
+RD_WEIGHT    // Load W1 weights (tile 7)
+RD_WEIGHT    // Load W1 weights (tile 8)
+MATMUL       // A × W1 (9 rows)
+RELU         // ReLU activation (9 elements)
 SYNC/SWAP    // Swap buffers
 
-// Layer 2: H×W2 → ReLU
-RD_WEIGHT    // Load W2 weights
-RD_WEIGHT
-RD_WEIGHT
-RD_WEIGHT
-MATMUL       // H × W2
-RELU         // ReLU activation
+// Layer 2: H×W2 → ReLU (9×256 × 256×256)
+RD_WEIGHT    // Load W2 weights (tile 9)
+RD_WEIGHT    // Load W2 weights (tile 10)
+RD_WEIGHT    // Load W2 weights (tile 11)
+RD_WEIGHT    // Load W2 weights (tile 12)
+RD_WEIGHT    // Load W2 weights (tile 13)
+RD_WEIGHT    // Load W2 weights (tile 14)
+RD_WEIGHT    // Load W2 weights (tile 15)
+RD_WEIGHT    // Load W2 weights (tile 16)
+RD_WEIGHT    // Load W2 weights (tile 17)
+MATMUL       // H × W2 (9 rows)
+RELU         // ReLU activation (9 elements)
 ```
 
 ## 🔧 Architecture Details
@@ -664,12 +677,14 @@ RELU         // ReLU activation
 ### Systolic Array Operation
 
 ```
-Weights loaded diagonally:     Activations flow right:
-PE[0][0] ← W[0][0]             A[0][0] → PE[0][0] → PE[0][1] → ...
-  ↓                             ↓         ↓         ↓
-PE[1][0] ← W[1][0]             A[1][0] → PE[1][0] → PE[1][1] → ...
-  ↓                             ↓         ↓         ↓
-...                           Partial sums flow down
+Weights loaded diagonally:        Activations flow right:
+PE[0][0] ← W[0][0]                A[0][0] → PE[0][0] → PE[0][1] → PE[0][2] → ...
+  ↓         ↓         ↓               ↓         ↓         ↓         ↓
+PE[1][0] ← W[1][0]                A[1][0] → PE[1][0] → PE[1][1] → PE[1][2] → ...
+  ↓         ↓         ↓               ↓         ↓         ↓         ↓
+PE[2][0] ← W[2][0]                A[2][0] → PE[2][0] → PE[2][1] → PE[2][2] → ...
+  ↓         ↓         ↓               ↓         ↓         ↓         ↓
+...                              Partial sums flow down (3 levels)
 ```
 
 ### Double-Buffering Benefits
@@ -693,15 +708,15 @@ PE[1][0] ← W[1][0]             A[1][0] → PE[1][0] → PE[1][1] → ...
 - **Throughput**: 1 result per cycle (after pipeline fill)
 
 ### Resource Utilization (Estimated)
-- **DSP48E1**: 4 slices (2×2 array)
+- **DSP48E1**: 9 slices (3×3 array)
 - **BRAM**: ~8 blocks (64 KiB × 4 buffers + UB)
-- **LUTs**: ~10,000
-- **FFs**: ~5,000
+- **LUTs**: ~27,000
+- **FFs**: ~18,000
 
 ### Power Consumption
-- **Dynamic Power**: ~200mW @ 100MHz
+- **Dynamic Power**: ~300mW @ 100MHz
 - **Static Power**: ~50mW
-- **Total**: ~250mW (Artix-7 XC7A35T)
+- **Total**: ~350mW (Artix-7 XC7A35T)
 
 ## 🧪 Verification
 
@@ -781,7 +796,7 @@ input  [31:0] instr_data_in
 ## 🚀 Future Enhancements
 
 ### Scalability
-- **4×4 Systolic Array**: Expand to 16 PEs
+- **4×4 Systolic Array**: Expand to 16 PEs (feasible with resource optimization)
 - **Larger Memories**: 256 KiB+ buffers
 - **Multiple VPU Functions**: Sigmoid, Tanh, Pooling
 

@@ -345,7 +345,7 @@ if __name__ == '__main__':
         print("="*70)
 
         # Generate test data
-        batch_size = 4
+        batch_size = 9  # Optimized for 3x3 systolic array
         input_dim = 256
 
         print(f"\nGenerating test data: {batch_size}x{input_dim} input")

@@ -19,7 +19,7 @@
 
   <!-- Title -->
   <text x="7000" y="50" font-size="48" font-weight="bold" text-anchor="middle" fill="#000">TPU v1 Controller &amp; Datapath Architecture</text>
-  <text x="7000" y="100" font-size="24" text-anchor="middle" fill="#666">2-Stage Pipeline with 2×2 Systolic Array</text>
+  <text x="7000" y="100" font-size="24" text-anchor="middle" fill="#666">2-Stage Pipeline with 3×3 Systolic Array</text>
 
   <!-- Controller Boundary -->
   <rect x="100" y="200" width="6800" height="3200" fill="none" stroke="purple" stroke-width="8" stroke-dasharray="20,10"/>
@@ -224,7 +224,7 @@
   <!-- Systolic Array (2×2 MMU) -->
   <rect x="5100" y="3800" width="2000" height="2000" fill="#F8BBD0" stroke="#880E4F" stroke-width="4" rx="10"/>
   <text x="6100" y="3900" font-size="28" font-weight="bold" text-anchor="middle">SYSTOLIC ARRAY</text>
-  <text x="6100" y="3940" font-size="22" text-anchor="middle">2×2 Processing Elements</text>
+  <text x="6100" y="3940" font-size="22" text-anchor="middle">3×3 Processing Elements</text>
   
   <!-- PE Grid -->
   <rect x="5300" y="4100" width="300" height="300" fill="#FFF9C4" stroke="#F57F17" stroke-width="3" rx="5"/>

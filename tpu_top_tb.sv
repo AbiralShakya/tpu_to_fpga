@@ -46,22 +46,32 @@ logic        hazard_detected;
 // Simple instruction memory (32 entries)
 logic [31:0] instr_memory [0:31];
 
-// Initialize instruction memory with a 2-layer MLP program
+// Initialize instruction memory with a 2-layer MLP program (3x3 array)
 initial begin
-    // Program: Load weights -> MATMUL -> RELU -> SYNC -> MATMUL -> RELU
-    instr_memory[0]  = {6'h02, 8'h00, 8'h00, 8'h00, 2'b00}; // RD_WEIGHT
-    instr_memory[1]  = {6'h02, 8'h01, 8'h00, 8'h00, 2'b00}; // RD_WEIGHT
-    instr_memory[2]  = {6'h02, 8'h02, 8'h00, 8'h00, 2'b00}; // RD_WEIGHT
-    instr_memory[3]  = {6'h02, 8'h03, 8'h00, 8'h00, 2'b00}; // RD_WEIGHT
-    instr_memory[4]  = {6'h01, 8'h00, 8'h00, 8'h02, 2'b00}; // MATMUL (rows=2)
-    instr_memory[5]  = {6'h03, 8'h00, 8'h00, 8'h00, 2'b00}; // RELU
-    instr_memory[6]  = {6'h04, 8'h00, 8'h00, 8'h00, 2'b00}; // SYNC/SWAP
-    instr_memory[7]  = {6'h02, 8'h04, 8'h00, 8'h00, 2'b00}; // RD_WEIGHT
-    instr_memory[8]  = {6'h02, 8'h05, 8'h00, 8'h00, 2'b00}; // RD_WEIGHT
-    instr_memory[9]  = {6'h02, 8'h06, 8'h00, 8'h00, 2'b00}; // RD_WEIGHT
-    instr_memory[10] = {6'h02, 8'h07, 8'h00, 8'h00, 2'b00}; // RD_WEIGHT
-    instr_memory[11] = {6'h01, 8'h00, 8'h00, 8'h02, 2'b00}; // MATMUL (rows=2)
-    instr_memory[12] = {6'h03, 8'h00, 8'h00, 8'h00, 2'b00}; // RELU
+    // Program: Load 9 weight tiles -> MATMUL (3 rows) -> RELU -> SYNC -> Load 9 more tiles -> MATMUL (3 rows) -> RELU (3x3 array)
+    instr_memory[0]  = {6'h02, 8'h00, 8'h00, 8'h00, 2'b00}; // RD_WEIGHT tile 0
+    instr_memory[1]  = {6'h02, 8'h01, 8'h00, 8'h00, 2'b00}; // RD_WEIGHT tile 1
+    instr_memory[2]  = {6'h02, 8'h02, 8'h00, 8'h00, 2'b00}; // RD_WEIGHT tile 2
+    instr_memory[3]  = {6'h02, 8'h03, 8'h00, 8'h00, 2'b00}; // RD_WEIGHT tile 3
+    instr_memory[4]  = {6'h02, 8'h04, 8'h00, 8'h00, 2'b00}; // RD_WEIGHT tile 4
+    instr_memory[5]  = {6'h02, 8'h05, 8'h00, 8'h00, 2'b00}; // RD_WEIGHT tile 5
+    instr_memory[6]  = {6'h02, 8'h06, 8'h00, 8'h00, 2'b00}; // RD_WEIGHT tile 6
+    instr_memory[7]  = {6'h02, 8'h07, 8'h00, 8'h00, 2'b00}; // RD_WEIGHT tile 7
+    instr_memory[8]  = {6'h02, 8'h08, 8'h00, 8'h00, 2'b00}; // RD_WEIGHT tile 8
+    instr_memory[9]  = {6'h01, 8'h00, 8'h00, 8'h03, 2'b00}; // MATMUL (rows=3)
+    instr_memory[10] = {6'h03, 8'h00, 8'h00, 8'h00, 2'b00}; // RELU
+    instr_memory[11] = {6'h04, 8'h00, 8'h00, 8'h00, 2'b00}; // SYNC/SWAP
+    instr_memory[12] = {6'h02, 8'h09, 8'h00, 8'h00, 2'b00}; // RD_WEIGHT tile 9
+    instr_memory[13] = {6'h02, 8'h0A, 8'h00, 8'h00, 2'b00}; // RD_WEIGHT tile 10
+    instr_memory[14] = {6'h02, 8'h0B, 8'h00, 8'h00, 2'b00}; // RD_WEIGHT tile 11
+    instr_memory[15] = {6'h02, 8'h0C, 8'h00, 8'h00, 2'b00}; // RD_WEIGHT tile 12
+    instr_memory[16] = {6'h02, 8'h0D, 8'h00, 8'h00, 2'b00}; // RD_WEIGHT tile 13
+    instr_memory[17] = {6'h02, 8'h0E, 8'h00, 8'h00, 2'b00}; // RD_WEIGHT tile 14
+    instr_memory[18] = {6'h02, 8'h0F, 8'h00, 8'h00, 2'b00}; // RD_WEIGHT tile 15
+    instr_memory[19] = {6'h02, 8'h10, 8'h00, 8'h00, 2'b00}; // RD_WEIGHT tile 16
+    instr_memory[20] = {6'h02, 8'h11, 8'h00, 8'h00, 2'b00}; // RD_WEIGHT tile 17
+    instr_memory[21] = {6'h01, 8'h00, 8'h00, 8'h03, 2'b00}; // MATMUL (rows=3)
+    instr_memory[22] = {6'h03, 8'h00, 8'h00, 8'h00, 2'b00}; // RELU
 
     // Fill rest with NOPs
     for (int i = 13; i < 32; i++) begin
@@ -79,8 +89,8 @@ assign instr_data_in = instr_memory[instr_addr_out];
 tpu_top dut (
     .clk             (clk),
     .rst_n           (rst_n),
-    .instr_data_in   (instr_data_in),
-    .instr_addr_out  (instr_addr_out),
+    .uart_rx         (1'b0),  // Tie UART RX low (no UART input in this test)
+    .uart_tx         (),      // Leave UART TX unconnected
     .dma_start_in    (dma_start_in),
     .dma_dir_in      (dma_dir_in),
     .dma_ub_addr_in  (dma_ub_addr_in),
@@ -93,7 +103,10 @@ tpu_top dut (
     .tpu_busy        (tpu_busy),
     .tpu_done        (tpu_done),
     .pipeline_stage  (pipeline_stage),
-    .hazard_detected (hazard_detected)
+    .hazard_detected (hazard_detected),
+    .uart_debug_state (),
+    .uart_debug_cmd (),
+    .uart_debug_byte_count ()
 );
 
 // =============================================================================
@@ -168,32 +181,29 @@ initial begin
     // Let the TPU run through the program
     $display("Time: %0t - Starting TPU program execution", $time);
 
-    // Monitor pipeline stages
-    fork
-        // Monitor thread
-        begin
-            int cycle_count = 0;
-            while (cycle_count < 1000) begin
-                @(posedge clk);
-                cycle_count++;
+    // Simple monitoring
+    begin
+        reg [9:0] cycle_count = 0;
+        while (cycle_count < 1000) begin
+            @(posedge clk);
+            cycle_count = cycle_count + 1;
 
-                if (pipeline_stage == 2'b01) begin
-                    $display("Time: %0t - Stage 1: Fetch/Decode", $time);
-                end else if (pipeline_stage == 2'b10) begin
-                    $display("Time: %0t - Stage 2: Execute", $time);
-                end
+            if (pipeline_stage == 2'b01) begin
+                $display("Time: %0t - Stage 1: Fetch/Decode", $time);
+            end else if (pipeline_stage == 2'b10) begin
+                $display("Time: %0t - Stage 2: Execute", $time);
+            end
 
-                if (hazard_detected) begin
-                    $display("Time: %0t - HAZARD DETECTED: Pipeline stalled", $time);
-                end
+            if (hazard_detected) begin
+                $display("Time: %0t - HAZARD DETECTED: Pipeline stalled", $time);
+            end
 
-                if (tpu_done && !tpu_busy) begin
-                    $display("Time: %0t - TPU computation completed", $time);
-                    break;
-                end
+            if (tpu_done && !tpu_busy) begin
+                $display("Time: %0t - TPU computation completed", $time);
+                cycle_count = 1000;  // Exit loop
             end
         end
-    join_none
+    end
 
     // Run for sufficient time to complete the program
     #2000;
@@ -223,11 +233,7 @@ initial begin
              $time, instr_addr_out, pipeline_stage, hazard_detected, tpu_busy, tpu_done);
 end
 
-// Timeout
-initial begin
-    #5000;
-    $display("Testbench timeout - stopping simulation");
-    $finish;
-end
+// Note: Verilator doesn't support simulation time delays
+// The test will run until completion or manual termination
 
 endmodule

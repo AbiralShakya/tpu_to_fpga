@@ -54,6 +54,8 @@ logic        dma_busy;
 logic [15:0] wt_fifo_data;
 logic [255:0] ub_wr_data;
 logic [255:0] ub_rd_data;
+logic        ub_wr_en;
+logic        ub_rd_en;
 
 // UART DMA to datapath interfaces
 logic        uart_ub_wr_en;
