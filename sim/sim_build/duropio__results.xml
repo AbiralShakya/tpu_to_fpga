@@ -1,0 +1,9 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1766360109" />
+    <testcase name="test_mmu_reset" classname="test_mmu" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_mmu.py" lineno="11" time="0.0007770061492919922" sim_time_ns="10.0" ratio_time="12869.911015648971" />
+    <testcase name="test_mmu_weight_loading_diagonal" classname="test_mmu" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_mmu.py" lineno="38" time="0.0005667209625244141" sim_time_ns="81.0" ratio_time="142927.48169962136" />
+    <testcase name="test_mmu_activation_flow" classname="test_mmu" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_mmu.py" lineno="122" time="0.0004210472106933594" sim_time_ns="61.000000000000014" ratio_time="144876.8652321631" />
+    <testcase name="test_mmu_simple_matrix_mult" classname="test_mmu" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_mmu.py" lineno="194" time="0.0005230903625488281" sim_time_ns="91.0" ratio_time="173966.11850501367" />
+  </testsuite>
+</testsuites>

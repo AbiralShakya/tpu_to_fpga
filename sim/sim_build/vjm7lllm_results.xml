@@ -1,0 +1,13 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1766359498" />
+    <testcase name="test_pe_reset" classname="test_pe" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_pe.py" lineno="13" time="0.00041794776916503906" sim_time_ns="20.0" ratio_time="47852.86936679977" />
+    <testcase name="test_pe_simple" classname="test_pe" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_pe.py" lineno="37" time="0.00036215782165527344" sim_time_ns="30.999999999999996" ratio_time="85598.04081632652" />
+    <testcase name="test_pe_mac_operation" classname="test_pe" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_pe.py" lineno="80" time="0.0005581378936767578" sim_time_ns="39.99999999999999" ratio_time="71666.8774028193">
+      <failure error_type="AssertionError" error_msg="act_out should pass activation, got 00000000&#10;assert LogicArray('00000000', Range(7, 'downto', 0)) == 10&#10; +  where LogicArray('00000000', Range(7, 'downto', 0)) = LogicArrayObject(pe.act_out).value&#10; +    where LogicArrayObject(pe.act_out) = HierarchyObject(pe).act_out" />
+    </testcase>
+    <testcase name="test_pe_activation_flow" classname="test_pe" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_pe.py" lineno="131" time="0.00039315223693847656" sim_time_ns="30.0" ratio_time="76306.31898120073">
+      <failure error_type="AssertionError" error_msg="act_out should equal act_in, got 00000000&#10;assert LogicArray('00000000', Range(7, 'downto', 0)) == 255&#10; +  where LogicArray('00000000', Range(7, 'downto', 0)) = LogicArrayObject(pe.act_out).value&#10; +    where LogicArrayObject(pe.act_out) = HierarchyObject(pe).act_out" />
+    </testcase>
+  </testsuite>
+</testsuites>

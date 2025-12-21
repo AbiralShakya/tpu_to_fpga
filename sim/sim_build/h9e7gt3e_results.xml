@@ -1,0 +1,9 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1766359960" />
+    <testcase name="test_pe_reset" classname="test_pe" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_pe.py" lineno="13" time="0.0009300708770751953" sim_time_ns="20.0" ratio_time="21503.737503204306" />
+    <testcase name="test_pe_simple" classname="test_pe" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_pe.py" lineno="37" time="0.000324249267578125" sim_time_ns="30.999999999999996" ratio_time="95605.4588235294" />
+    <testcase name="test_pe_mac_operation" classname="test_pe" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_pe.py" lineno="80" time="0.00036215782165527344" sim_time_ns="50.99999999999999" ratio_time="140822.58327847265" />
+    <testcase name="test_pe_activation_flow" classname="test_pe" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_pe.py" lineno="135" time="0.0002090930938720703" sim_time_ns="30.999999999999986" ratio_time="148259.32041049024" />
+  </testsuite>
+</testsuites>

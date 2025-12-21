@@ -1,0 +1,15 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1766358929" />
+    <testcase name="test_pe_reset" classname="test_pe" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_pe.py" lineno="13" time="0.000453948974609375" sim_time_ns="20.0" ratio_time="44057.815126050424" />
+    <testcase name="test_pe_simple" classname="test_pe" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_pe.py" lineno="37" time="0.0005240440368652344" sim_time_ns="29.999999999999996" ratio_time="57247.09736123748">
+      <failure error_type="AssertionError" error_msg="act_out should pass act_in, got 00000000&#10;assert LogicArray('00000000', Range(7, 'downto', 0)) == 10&#10; +  where LogicArray('00000000', Range(7, 'downto', 0)) = LogicArrayObject(pe.act_out).value&#10; +    where LogicArrayObject(pe.act_out) = HierarchyObject(pe).act_out" />
+    </testcase>
+    <testcase name="test_pe_mac_operation" classname="test_pe" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_pe.py" lineno="73" time="0.0005300045013427734" sim_time_ns="39.99999999999999" ratio_time="75471.05713000448">
+      <failure error_type="AssertionError" error_msg="act_out should pass activation, got 00000000&#10;assert LogicArray('00000000', Range(7, 'downto', 0)) == 10&#10; +  where LogicArray('00000000', Range(7, 'downto', 0)) = LogicArrayObject(pe.act_out).value&#10; +    where LogicArrayObject(pe.act_out) = HierarchyObject(pe).act_out" />
+    </testcase>
+    <testcase name="test_pe_activation_flow" classname="test_pe" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_pe.py" lineno="124" time="0.0003600120544433594" sim_time_ns="30.0" ratio_time="83330.54304635762">
+      <failure error_type="AssertionError" error_msg="act_out should equal act_in, got 00000000&#10;assert LogicArray('00000000', Range(7, 'downto', 0)) == 255&#10; +  where LogicArray('00000000', Range(7, 'downto', 0)) = LogicArrayObject(pe.act_out).value&#10; +    where LogicArrayObject(pe.act_out) = HierarchyObject(pe).act_out" />
+    </testcase>
+  </testsuite>
+</testsuites>
