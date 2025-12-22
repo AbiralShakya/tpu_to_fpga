@@ -193,12 +193,11 @@ accumulator accumulators (
     .wr_data     (acc_wr_data),
     .rd_en       (acc_rd_en),
     .rd_addr     (acc_addr),
-    .rd_data     (acc_rd_data),
-    .acc_busy    ()  // Not connected
+    .rd_data     (acc_rd_data)
 );
 
 // Accumulator write data (from systolic array outputs)
-assign acc_wr_data = {acc2_out, acc1_out, acc0_out};  // Direct from MMU outputs
+assign acc_wr_data = {acc1_out, acc0_out};  // 64-bit: col1 + col0
 
 // =============================================================================
 // ACTIVATION PIPELINES (tinytinyTPU compatible)
@@ -223,7 +222,7 @@ assign q_zero_point = 8'sd0;     // Zero point = 0
 logic signed [31:0] acc_col0, acc_col1, acc_col2;
 assign acc_col0 = acc_rd_data[31:0];    // Column 0
 assign acc_col1 = acc_rd_data[63:32];   // Column 1
-assign acc_col2 = acc_rd_data[95:64];   // Column 2
+assign acc_col2 = 32'b0;                // Column 2 not stored (for now)
 
 // Activation pipelines for each column
 logic ap_valid_col0, ap_valid_col1, ap_valid_col2;

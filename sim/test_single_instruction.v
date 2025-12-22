@@ -92,3 +92,4 @@ module test_single_instruction;
     end
 
 endmodule
+

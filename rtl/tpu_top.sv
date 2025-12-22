@@ -4,6 +4,18 @@ module tpu_top (
     input  logic        clk,           // System clock (100MHz)
     input  logic        rst_n,         // Active-low reset
 
+    // Basys 3 Physical Interface
+    input  logic [15:0] sw,            // 16 slide switches
+    input  logic [4:0]  btn,           // 5 push buttons [BTNU, BTND, BTNL, BTNR, BTNC]
+
+    // 7-Segment Display Interface
+    output logic [6:0]  seg,           // 7-segment segments (A-G)
+    output logic [3:0]  an,            // 7-segment anodes
+    output logic        dp,            // Decimal point
+
+    // Status LEDs
+    output logic [15:0] led,           // 16 green LEDs
+
     // UART Interface (for Basys3 development)
     input  logic        uart_rx,
     output logic        uart_tx,
@@ -96,21 +108,21 @@ logic [255:0] ub_wr_data;
 logic [255:0] ub_rd_data;
 
 // =============================================================================
-// UART DMA TO DATAPATH INTERFACES
+// BASYS3 TEST INTERFACE TO DATAPATH INTERFACES
 // =============================================================================
 
-logic        uart_ub_wr_en;
-logic [7:0]  uart_ub_wr_addr;
-logic [255:0] uart_ub_wr_data;
-logic        uart_ub_rd_en;
-logic [7:0]  uart_ub_rd_addr;
-logic        uart_wt_wr_en;
-logic [9:0]  uart_wt_wr_addr;
-logic [63:0] uart_wt_wr_data;
-logic        uart_instr_wr_en;
-logic [4:0]  uart_instr_wr_addr;
-logic [31:0] uart_instr_wr_data;
-logic        uart_start_execution;
+logic        test_ub_wr_en;
+logic [7:0]  test_ub_wr_addr;
+logic [255:0] test_ub_wr_data;
+logic        test_ub_rd_en;
+logic [7:0]  test_ub_rd_addr;
+logic        test_wt_wr_en;
+logic [9:0]  test_wt_wr_addr;
+logic [63:0] test_wt_wr_data;
+logic        test_instr_wr_en;
+logic [4:0]  test_instr_wr_addr;
+logic [31:0] test_instr_wr_data;
+logic        test_start_execution;
 
 // =============================================================================
 // DMA CONTROL SIGNALS (LEGACY)
@@ -240,50 +252,57 @@ tpu_controller controller (
 );
 
 // =============================================================================
-// UART DMA CONTROLLER (Basys3 Interface)
+// BASYS3 TEST INTERFACE
 // =============================================================================
 
-uart_dma_basys3 uart_dma (
+basys3_test_interface test_interface (
     .clk                (clk),
     .rst_n              (rst_n),
 
-    // UART Interface
+    // Physical Interface - Basys 3
+    .sw                 (sw),
+    .btn                (btn),
+
+    // 7-Segment Display Interface
+    .seg                (seg),
+    .an                 (an),
+    .dp                 (dp),
+
+    // Status LEDs
+    .led                (led),
+
+    // UART Interface (passthrough)
     .uart_rx            (uart_rx),
     .uart_tx            (uart_tx),
 
     // To Unified Buffer
-    .ub_wr_en           (uart_ub_wr_en),
-    .ub_wr_addr         (uart_ub_wr_addr),
-    .ub_wr_data         (uart_ub_wr_data),
-    .ub_rd_en           (uart_ub_rd_en),
-    .ub_rd_addr         (uart_ub_rd_addr),
+    .ub_wr_en           (test_ub_wr_en),
+    .ub_wr_addr         (test_ub_wr_addr),
+    .ub_wr_data         (test_ub_wr_data),
+    .ub_rd_en           (test_ub_rd_en),
+    .ub_rd_addr         (test_ub_rd_addr),
     .ub_rd_data         (ub_rd_data),       // From datapath UB
 
     // To Weight Memory
-    .wt_wr_en           (uart_wt_wr_en),
-    .wt_wr_addr         (uart_wt_wr_addr),
-    .wt_wr_data         (uart_wt_wr_data),
+    .wt_wr_en           (test_wt_wr_en),
+    .wt_wr_addr         (test_wt_wr_addr),
+    .wt_wr_data         (test_wt_wr_data),
 
     // To Instruction Buffer
-    .instr_wr_en        (uart_instr_wr_en),
-    .instr_wr_addr      (uart_instr_wr_addr),
-    .instr_wr_data      (uart_instr_wr_data),
+    .instr_wr_en        (test_instr_wr_en),
+    .instr_wr_addr      (test_instr_wr_addr),
+    .instr_wr_data      (test_instr_wr_data),
 
     // To Controller
-    .start_execution    (uart_start_execution),
+    .start_execution    (test_start_execution),
 
     // From Datapath (status)
     .sys_busy           (sys_busy),
-    .sys_done           (1'b1),             // Assume done
+    .sys_done           (sys_done),
     .vpu_busy           (vpu_busy),
-    .vpu_done           (1'b1),             // Assume done
+    .vpu_done           (vpu_done),
     .ub_busy            (1'b0),             // Assume not busy
-    .ub_done            (1'b1),             // Assume done
-
-    // Debug outputs
-    .debug_state        (uart_debug_state),
-    .debug_cmd          (uart_debug_cmd),
-    .debug_byte_count   (uart_debug_byte_count)
+    .ub_done            (1'b1)              // Assume done
 );
 
 // =============================================================================
@@ -356,18 +375,18 @@ tpu_datapath datapath (
 // DMA INTERFACE LOGIC (UART takes priority over legacy DMA)
 // =============================================================================
 
-// Multiplex between UART DMA and legacy DMA
-// UART DMA takes priority when active
-logic use_uart_dma;
-assign use_uart_dma = uart_ub_wr_en | uart_ub_rd_en | uart_wt_wr_en | uart_instr_wr_en;
+// Multiplex between TEST INTERFACE and legacy DMA
+// TEST INTERFACE takes priority when active
+logic use_test_interface;
+assign use_test_interface = test_ub_wr_en | test_ub_rd_en | test_wt_wr_en | test_instr_wr_en;
 
-// Unified Buffer connections (UART DMA takes priority)
-assign ub_wr_data = use_uart_dma ? uart_ub_wr_data : dma_data_in;
-assign ub_wr_en = use_uart_dma ? uart_ub_wr_en : 1'b0;  // UART controls write enable
-assign ub_rd_en = use_uart_dma ? uart_ub_rd_en : 1'b0;  // UART controls read enable
+// Unified Buffer connections (TEST INTERFACE takes priority)
+assign ub_wr_data = use_test_interface ? test_ub_wr_data : dma_data_in;
+assign ub_wr_en = use_test_interface ? test_ub_wr_en : 1'b0;  // TEST INTERFACE controls write enable
+assign ub_rd_en = use_test_interface ? test_ub_rd_en : 1'b0;  // TEST INTERFACE controls read enable
 
-// Weight FIFO data (from UART or legacy DMA)
-assign wt_fifo_data = use_uart_dma ? uart_wt_wr_data[15:0] : dma_data_in[15:0];
+// Weight FIFO data (from TEST INTERFACE or legacy DMA)
+assign wt_fifo_data = use_test_interface ? test_wt_wr_data[15:0] : dma_data_in[15:0];
 
 // Legacy DMA control signals
 assign dma_start = dma_start_in;
@@ -376,14 +395,14 @@ assign dma_ub_addr = dma_ub_addr_in;
 assign dma_length = dma_length_in;
 assign dma_elem_sz = dma_elem_sz_in;
 
-// DMA outputs (UART DMA overrides legacy)
+// DMA outputs (TEST INTERFACE overrides legacy)
 assign dma_data_out = ub_rd_data;  // Always output from UB
-assign dma_busy_out = use_uart_dma ? 1'b0 : dma_busy;  // UART DMA is synchronous
+assign dma_busy_out = use_test_interface ? 1'b0 : dma_busy;  // TEST INTERFACE is synchronous
 assign dma_done_out = 1'b1;  // Simplified - always done
 
-// Controller start signal (from UART DMA)
+// Controller start signal (from TEST INTERFACE)
 logic controller_start;
-assign controller_start = uart_start_execution;
+assign controller_start = test_start_execution;
 
 // =============================================================================
 // TOP-LEVEL STATUS

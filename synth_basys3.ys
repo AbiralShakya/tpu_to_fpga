@@ -1,0 +1,40 @@
+# Yosys synthesis script for TPU v1 on Basys 3 with physical testing interface
+# Run with: yosys synth_basys3.ys
+
+# Read SystemVerilog source files
+read_verilog -sv rtl/tpu_top.sv
+read_verilog -sv rtl/tpu_controller.sv
+read_verilog -sv rtl/tpu_datapath.sv
+read_verilog -sv rtl/unified_buffer.sv
+read_verilog -sv rtl/systolic_controller.sv
+read_verilog -sv rtl/accumulator.sv
+read_verilog -sv rtl/activation_pipeline.sv
+read_verilog -sv rtl/dual_weight_fifo.sv
+read_verilog -sv rtl/weight_fifo.sv
+read_verilog -sv rtl/normalizer.sv
+read_verilog -sv rtl/loss_block.sv
+read_verilog -sv rtl/clock_manager.sv
+read_verilog -sv rtl/pe_dsp.sv
+read_verilog -sv rtl/pe.sv
+read_verilog -sv rtl/mlp_top.sv
+read_verilog -sv rtl/vpu.sv
+read_verilog -sv rtl/basys3_test_interface.sv
+read_verilog -sv rtl/uart_rx.sv
+read_verilog -sv rtl/uart_tx.sv
+read_verilog -sv rtl/uart_dma_basys3.sv
+
+# Read Xilinx primitives
+read_verilog xilinx_primitives.v
+
+# Hierarchy and checking
+hierarchy -check
+hierarchy -top tpu_top
+
+# Generic synthesis
+synth_xilinx -flatten -abc9 -arch xc7 -top tpu_top
+
+# Write JSON for nextpnr
+write_json build/tpu_basys3.json
+
+# Print statistics
+stat

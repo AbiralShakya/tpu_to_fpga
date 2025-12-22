@@ -90,23 +90,20 @@ module activation_pipeline (
     assign scaled = 32'(mult_rounded >>> 8);          // back to Q0
     assign biased = scaled + {{24{q_zero_point[7]}}, q_zero_point};
 
-    // Saturation function for int8
-    function automatic logic signed [7:0] sat_int8(input logic signed [31:0] val);
-        if (val > 32'sd127)
-            return 8'sd127;
-        else if (val < -32'sd128)
-            return -8'sd128;
-        else
-            return val[7:0];
-    endfunction
-
+    // Simple saturation for int8 (inline)
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             valid_reg <= 1'b0;
             ub_q_reg  <= 8'sd0;
         end else begin
             valid_reg <= s2_valid;
-            ub_q_reg  <= sat_int8(biased);
+            // Simple saturation without function call
+            if (biased > 127)
+                ub_q_reg <= 8'sd127;
+            else if (biased < -128)
+                ub_q_reg <= -8'sd128;
+            else
+                ub_q_reg <= biased[7:0];
         end
     end
 

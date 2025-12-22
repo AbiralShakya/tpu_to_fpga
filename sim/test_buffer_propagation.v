@@ -60,3 +60,4 @@ module test_buffer_propagation;
     end
 
 endmodule
+

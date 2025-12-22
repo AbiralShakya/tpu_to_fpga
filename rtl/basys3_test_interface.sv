@@ -1,0 +1,362 @@
+`timescale 1ns / 1ps
+
+module basys3_test_interface (
+    input  logic        clk,           // System clock (100MHz)
+    input  logic        rst_n,         // Active-low reset
+
+    // Physical Interface - Basys 3
+    input  logic [15:0] sw,            // 16 slide switches
+    input  logic [4:0]  btn,           // 5 push buttons [BTNU, BTND, BTNL, BTNR, BTNC]
+
+    // 7-Segment Display Interface
+    output logic [6:0]  seg,           // 7-segment segments (A-G)
+    output logic [3:0]  an,            // 7-segment anodes
+    output logic        dp,            // Decimal point
+
+    // Status LEDs
+    output logic [15:0] led,           // 16 green LEDs
+
+    // UART Interface (passthrough to existing UART DMA)
+    input  logic        uart_rx,
+    output logic        uart_tx,
+
+    // To TPU Core (replaces direct UART DMA connection)
+    output logic        ub_wr_en,
+    output logic [7:0]  ub_wr_addr,
+    output logic [255:0] ub_wr_data,
+    output logic        ub_rd_en,
+    output logic [7:0]  ub_rd_addr,
+    input  logic [255:0] ub_rd_data,
+
+    output logic        wt_wr_en,
+    output logic [9:0]  wt_wr_addr,
+    output logic [63:0] wt_wr_data,
+
+    output logic        instr_wr_en,
+    output logic [4:0]  instr_wr_addr,
+    output logic [31:0] instr_wr_data,
+
+    output logic        start_execution,
+
+    // From TPU Core (status)
+    input  logic        sys_busy,
+    input  logic        sys_done,
+    input  logic        vpu_busy,
+    input  logic        vpu_done,
+    input  logic        ub_busy,
+    input  logic        ub_done
+);
+
+// ============================================================================
+// INTERFACE MODES
+// ============================================================================
+
+typedef enum logic [2:0] {
+    MODE_IDLE      = 3'b000,  // Idle - show status
+    MODE_INSTR     = 3'b001,  // Instruction programming mode
+    MODE_DATA      = 3'b010,  // Data programming mode
+    MODE_WEIGHT    = 3'b011,  // Weight programming mode
+    MODE_EXECUTE   = 3'b100,  // Execution mode
+    MODE_RESULTS   = 3'b101   // Results viewing mode
+} mode_t;
+
+mode_t current_mode;
+
+// ============================================================================
+// BUTTON DEBOUNCING
+// ============================================================================
+
+logic [4:0] btn_debounced;
+logic [4:0] btn_prev;
+logic [19:0] debounce_counter;  // ~20ms at 100MHz
+
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        btn_debounced <= 5'b0;
+        btn_prev <= 5'b0;
+        debounce_counter <= 20'b0;
+    end else begin
+        btn_prev <= btn;
+
+        if (debounce_counter == 20'hFFFFF) begin  // ~20ms debounce
+            btn_debounced <= btn;
+            debounce_counter <= 20'b0;
+        end else begin
+            debounce_counter <= debounce_counter + 1;
+        end
+    end
+end
+
+// Button press detection (single pulse)
+logic [4:0] btn_press;
+assign btn_press = ~btn_prev & btn_debounced;
+
+// Button assignments:
+// btn[4] = BTNU (Up)    - Mode up
+// btn[3] = BTND (Down)  - Mode down
+// btn[2] = BTNL (Left)  - Previous item
+// btn[1] = BTNR (Right) - Next item
+// btn[0] = BTNC (Center)- Execute/Select
+
+// ============================================================================
+// MODE CONTROL
+// ============================================================================
+
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        current_mode <= MODE_IDLE;
+    end else begin
+        if (btn_press[4]) begin  // BTNU - next mode
+            case (current_mode)
+                MODE_IDLE:    current_mode <= MODE_INSTR;
+                MODE_INSTR:   current_mode <= MODE_DATA;
+                MODE_DATA:    current_mode <= MODE_WEIGHT;
+                MODE_WEIGHT:  current_mode <= MODE_EXECUTE;
+                MODE_EXECUTE: current_mode <= MODE_RESULTS;
+                MODE_RESULTS: current_mode <= MODE_IDLE;
+                default:      current_mode <= MODE_IDLE;
+            endcase
+        end else if (btn_press[3]) begin  // BTND - previous mode
+            case (current_mode)
+                MODE_IDLE:    current_mode <= MODE_RESULTS;
+                MODE_INSTR:   current_mode <= MODE_IDLE;
+                MODE_DATA:    current_mode <= MODE_INSTR;
+                MODE_WEIGHT:  current_mode <= MODE_DATA;
+                MODE_EXECUTE: current_mode <= MODE_WEIGHT;
+                MODE_RESULTS: current_mode <= MODE_EXECUTE;
+                default:      current_mode <= MODE_IDLE;
+            endcase
+        end
+    end
+end
+
+// ============================================================================
+// 7-SEGMENT DISPLAY CONTROLLER
+// ============================================================================
+
+logic [15:0] display_value;
+logic [1:0]  display_mode;  // 0=hex, 1=decimal, 2=status, 3=debug
+
+// 7-segment encoding (active low: 0=on, 1=off)
+// Segments: ABCDEFG (A=top, B=top-right, C=bottom-right, D=bottom,
+//                    E=bottom-left, F=top-left, G=middle)
+function [6:0] hex_to_7seg(input [3:0] hex);
+    case (hex)
+        4'h0: hex_to_7seg = 7'b1000000;  // 0: ABCDEF
+        4'h1: hex_to_7seg = 7'b1111001;  // 1: BC
+        4'h2: hex_to_7seg = 7'b0100100;  // 2: ABDEG
+        4'h3: hex_to_7seg = 7'b0110000;  // 3: ABCDG
+        4'h4: hex_to_7seg = 7'b0011001;  // 4: BCFG
+        4'h5: hex_to_7seg = 7'b0010010;  // 5: ACDFG
+        4'h6: hex_to_7seg = 7'b0000010;  // 6: ACDEFG
+        4'h7: hex_to_7seg = 7'b1111000;  // 7: ABC
+        4'h8: hex_to_7seg = 7'b0000000;  // 8: ABCDEFG
+        4'h9: hex_to_7seg = 7'b0010000;  // 9: ABCDFG
+        4'hA: hex_to_7seg = 7'b0001000;  // A: ABCEFG
+        4'hB: hex_to_7seg = 7'b0000011;  // B: CDEFG
+        4'hC: hex_to_7seg = 7'b1000110;  // C: ADEF
+        4'hD: hex_to_7seg = 7'b0100001;  // D: BCDEG
+        4'hE: hex_to_7seg = 7'b0000110;  // E: ADEFG
+        4'hF: hex_to_7seg = 7'b0001110;  // F: AEFG
+        default: hex_to_7seg = 7'b1111111; // All off
+    endcase
+endfunction
+
+// Display multiplexing (refresh ~1kHz)
+logic [1:0] digit_select;
+logic [16:0] refresh_counter;
+
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        digit_select <= 2'b00;
+        refresh_counter <= 17'b0;
+    end else begin
+        refresh_counter <= refresh_counter + 1;
+        if (refresh_counter == 17'd100000) begin  // ~1ms at 100MHz
+            refresh_counter <= 17'b0;
+            digit_select <= digit_select + 1;
+        end
+    end
+end
+
+// Display control
+always_comb begin
+    an = 4'b1111;  // All off by default
+    an[digit_select] = 1'b0;  // Enable current digit
+
+    case (current_mode)
+        MODE_IDLE: begin
+            display_value = {12'b0, sys_busy, vpu_busy, ub_busy, 1'b0};
+            display_mode = 2'b00;  // Hex
+        end
+        MODE_INSTR: begin
+            display_value = {4'h0, 4'h0, 4'h0, sw[15:12]};
+            display_mode = 2'b00;  // Hex
+        end
+        MODE_DATA: begin
+            display_value = {sw[15:12], sw[11:8], sw[7:4], sw[3:0]};
+            display_mode = 2'b00;  // Hex
+        end
+        MODE_WEIGHT: begin
+            display_value = {4'h0, 4'h0, sw[7:4], sw[3:0]};
+            display_mode = 2'b00;  // Hex
+        end
+        MODE_EXECUTE: begin
+            display_value = {4'h0, 4'h0, 4'h0, sys_busy, vpu_busy, 2'b00};
+            display_mode = 2'b00;  // Hex
+        end
+        MODE_RESULTS: begin
+            display_value = {4'h0, 4'h0, 4'h0, ub_rd_data[3:0]};
+            display_mode = 2'b00;  // Hex
+        end
+        default: begin
+            display_value = 16'hDEAD;
+            display_mode = 2'b00;
+        end
+    endcase
+
+    // Select digit value and convert to 7-segment
+    case (digit_select)
+        2'b00: seg = hex_to_7seg(display_value[3:0]);
+        2'b01: seg = hex_to_7seg(display_value[7:4]);
+        2'b10: seg = hex_to_7seg(display_value[11:8]);
+        2'b11: seg = hex_to_7seg(display_value[15:12]);
+    endcase
+
+    dp = 1'b1;  // Decimal point off
+end
+
+// ============================================================================
+// LED STATUS DISPLAY
+// ============================================================================
+
+always_comb begin
+    case (current_mode)
+        MODE_IDLE:    led = {12'b000000000000, sys_busy, vpu_busy, ub_busy, 1'b0};
+        MODE_INSTR:   led = {8'b00001111, sw[7:0]};
+        MODE_DATA:    led = sw;
+        MODE_WEIGHT:  led = {8'b11110000, sw[7:0]};
+        MODE_EXECUTE: led = {12'b101010101010, sys_busy, vpu_busy, ub_busy, 1'b0};
+        MODE_RESULTS: led = ub_rd_data[15:0];
+        default:      led = 16'b1010101010101010;
+    endcase
+end
+
+// ============================================================================
+// INSTRUCTION/DATA PROGRAMMING
+// ============================================================================
+
+logic [31:0] current_instruction;
+logic [7:0]  program_counter;
+logic [255:0] current_data;
+logic [63:0]  current_weight;
+
+// Instruction programming
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        current_instruction <= 32'b0;
+        program_counter <= 8'b0;
+        instr_wr_en <= 1'b0;
+    end else begin
+        instr_wr_en <= 1'b0;
+
+        if (current_mode == MODE_INSTR && btn_press[0]) begin  // BTNC - program instruction
+            // Build instruction from switches
+            // sw[15:12] = opcode, sw[11:8] = ARG1, sw[7:4] = ARG2, sw[3:0] = ARG3
+            current_instruction <= {6'b000000, sw[15:12], sw[11:8], sw[7:4], sw[3:0], 2'b00};
+
+            instr_wr_en <= 1'b1;
+            instr_wr_addr <= program_counter[4:0];
+            instr_wr_data <= {6'b000000, sw[15:12], sw[11:8], sw[7:4], sw[3:0], 2'b00};
+
+            program_counter <= program_counter + 1;
+        end
+    end
+end
+
+// Data programming (UB)
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        current_data <= 256'b0;
+        ub_wr_en <= 1'b0;
+    end else begin
+        ub_wr_en <= 1'b0;
+
+        if (current_mode == MODE_DATA && btn_press[0]) begin  // BTNC - program data
+            current_data <= {240'b0, sw};  // Use switches as 16-bit data
+
+            ub_wr_en <= 1'b1;
+            ub_wr_addr <= sw[15:8];  // Use upper switches as address
+            ub_wr_data <= {240'b0, sw};  // Use switches as data
+        end
+    end
+end
+
+// Weight programming
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        current_weight <= 64'b0;
+        wt_wr_en <= 1'b0;
+    end else begin
+        wt_wr_en <= 1'b0;
+
+        if (current_mode == MODE_WEIGHT && btn_press[0]) begin  // BTNC - program weight
+            current_weight <= {48'b0, sw};  // Use switches as 16-bit weight
+
+            wt_wr_en <= 1'b1;
+            wt_wr_addr <= sw[15:6];  // Use upper switches as address
+            wt_wr_data <= {48'b0, sw};  // Use switches as weight data
+        end
+    end
+end
+
+// ============================================================================
+// EXECUTION CONTROL
+// ============================================================================
+
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        start_execution <= 1'b0;
+    end else begin
+        start_execution <= 1'b0;
+
+        if (current_mode == MODE_EXECUTE && btn_press[0]) begin  // BTNC - start execution
+            start_execution <= 1'b1;
+        end
+    end
+end
+
+// ============================================================================
+// RESULTS VIEWING
+// ============================================================================
+
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        ub_rd_en <= 1'b0;
+        ub_rd_addr <= 8'b0;
+    end else begin
+        ub_rd_en <= 1'b0;
+
+        if (current_mode == MODE_RESULTS) begin
+            if (btn_press[2]) begin  // BTNL - previous address
+                ub_rd_addr <= ub_rd_addr - 1;
+                ub_rd_en <= 1'b1;
+            end else if (btn_press[1]) begin  // BTNR - next address
+                ub_rd_addr <= ub_rd_addr + 1;
+                ub_rd_en <= 1'b1;
+            end else if (btn_press[0]) begin  // BTNC - read current address
+                ub_rd_en <= 1'b1;
+            end
+        end
+    end
+end
+
+// ============================================================================
+// UART INTERFACE (PASS-THROUGH)
+// ============================================================================
+
+// For now, disable UART DMA when using physical interface
+// TODO: Implement UART DMA integration
+assign uart_tx = 1'b1;  // Idle high
+
+endmodule

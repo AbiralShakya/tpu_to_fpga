@@ -4,53 +4,39 @@ module accumulator (
     input  logic        clk,
     input  logic        rst_n,
 
-    input  logic        valid_in,           // MMU data valid
-    input  logic        accumulator_enable, // Add to existing sum (1) or overwrite (0)
-    input  logic        addr_sel,           // Buffer selection (0/1)
-
-    input  logic [31:0] mmu_col0_in,        // Column 0 from MMU
-    input  logic [31:0] mmu_col1_in,        // Column 1 from MMU
-    input  logic [31:0] mmu_col2_in,        // Column 2 from MMU (our extension)
-
-    output logic signed [31:0] acc_col0_out, // Column 0 to activation pipeline
-    output logic signed [31:0] acc_col1_out, // Column 1 to activation pipeline
-    output logic signed [31:0] acc_col2_out, // Column 2 to activation pipeline (our extension)
-    output logic        valid_out           // Data valid for activation pipeline
+    input  logic        acc_buf_sel,    // Buffer selection (0/1)
+    input  logic        wr_en,          // Write enable
+    input  logic [7:0]  wr_addr,        // Write address
+    input  logic [63:0] wr_data,        // Write data (64 bits: col1 + col0)
+    input  logic        rd_en,          // Read enable
+    input  logic [7:0]  rd_addr,        // Read address
+    output logic [63:0] rd_data         // Read data (64 bits: col1 + col0)
 );
 
 // =============================================================================
-// MODULAR ACCUMULATOR (tinytinyTPU compatible)
+// SIMPLE ACCUMULATOR MEMORY (Dual-port, double-buffered)
 // =============================================================================
 
-logic        aligned_valid;
-logic [31:0] aligned_col0, aligned_col1, aligned_col2;
+// Two buffers of 256 entries each (8-bit address), 64-bit data each
+logic [63:0] buffer0 [0:255];
+logic [63:0] buffer1 [0:255];
 
-accumulator_align align_u (
-    .clk(clk),
-    .rst_n(rst_n),
-    .valid_in(valid_in),
-    .raw_col0(mmu_col0_in),
-    .raw_col1(mmu_col1_in),
-    .raw_col2(mmu_col2_in),
-    .aligned_valid(aligned_valid),
-    .align_col0(aligned_col0),
-    .align_col1(aligned_col1),
-    .align_col2(aligned_col2)
-);
+// Write operation
+always_ff @(posedge clk) begin
+    if (wr_en) begin
+        if (acc_buf_sel == 0)
+            buffer0[wr_addr] <= wr_data;
+        else
+            buffer1[wr_addr] <= wr_data;
+    end
+end
 
-accumulator_mem mem_u (
-    .clk(clk),
-    .rst_n(rst_n),
-    .enable(aligned_valid),
-    .accumulator_mode(accumulator_enable),
-    .buffer_select(addr_sel),
-    .in_col0(aligned_col0),
-    .in_col1(aligned_col1),
-    .in_col2(aligned_col2),
-    .valid_out(valid_out),
-    .out_col0(acc_col0_out),
-    .out_col1(acc_col1_out),
-    .out_col2(acc_col2_out)
-);
+// Read operation (combinational)
+always_comb begin
+    if (acc_buf_sel == 0)
+        rd_data = buffer0[rd_addr];
+    else
+        rd_data = buffer1[rd_addr];
+end
 
 endmodule

@@ -66,3 +66,4 @@ module test_instruction_throughput;
     end
 
 endmodule
+
