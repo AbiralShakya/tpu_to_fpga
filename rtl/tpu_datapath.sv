@@ -4,20 +4,53 @@ module tpu_datapath (
     input  logic        clk,
     input  logic        rst_n,
 
-    // Control signals from controller
-    input  logic        sys_start,
-    input  logic [7:0]  sys_rows,
-    input  logic [7:0]  ub_rd_addr,
-    input  logic        wt_fifo_wr,
-    input  logic        vpu_start,
-    input  logic [3:0]  vpu_mode,
-    input  logic        wt_buf_sel,
-    input  logic        acc_buf_sel,
+    // =============================================================================
+    // CONTROL SIGNALS FROM CONTROLLER (29 signals)
+    // =============================================================================
+
+    // Systolic Array Control (7 signals)
+    input  logic        sys_start,       // Start systolic operation
+    input  logic [1:0]  sys_mode,        // Operation mode (00=MatMul, 01=Conv2D, 10=Accumulate)
+    input  logic [7:0]  sys_rows,         // Number of rows to process
+    input  logic        sys_signed,      // Signed/unsigned arithmetic
+    input  logic        sys_transpose,    // Transpose input matrix
+    input  logic [7:0]  sys_acc_addr,    // Accumulator write address
+    input  logic        sys_acc_clear,   // Clear accumulator before write
+
+    // Unified Buffer Control (7 signals)
+    input  logic        ub_rd_en,        // UB read enable
+    input  logic        ub_wr_en,         // UB write enable
+    input  logic [8:0]  ub_rd_addr,       // Read address + bank select
+    input  logic [8:0]  ub_wr_addr,       // Write address + bank select
+    input  logic [8:0]  ub_rd_count,      // Read burst count
+    input  logic [8:0]  ub_wr_count,      // Write burst count
+    input  logic        ub_buf_sel,      // Bank selection
+
+    // Weight FIFO Control (5 signals)
+    input  logic        wt_mem_rd_en,    // Read from weight DRAM
+    input  logic [23:0] wt_mem_addr,     // DRAM address
+    input  logic        wt_fifo_wr,      // Weight FIFO write enable
+    input  logic [7:0]  wt_num_tiles,     // Number of tiles to load
+    input  logic        wt_buf_sel,      // Weight buffer selection
+
+    // Accumulator Control (4 signals)
+    input  logic        acc_wr_en,       // Accumulator write enable
+    input  logic        acc_rd_en,       // Accumulator read enable
+    input  logic [7:0]  acc_addr,        // Accumulator address
+    input  logic        acc_buf_sel,     // Accumulator buffer selection
+
+    // VPU Control (6 signals)
+    input  logic        vpu_start,       // Start VPU operation
+    input  logic [3:0]  vpu_mode,        // VPU function selection
+    input  logic [7:0]  vpu_in_addr,     // VPU input address
+    input  logic [7:0]  vpu_out_addr,    // VPU output address
+    input  logic [7:0]  vpu_length,      // Number of elements
+    input  logic [15:0] vpu_param,       // VPU operation parameter
 
     // Data interfaces
-    input  logic [15:0] wt_fifo_data,  // Weight data input
-    input  logic [255:0] ub_wr_data,   // Unified buffer write data
-    output logic [255:0] ub_rd_data,   // Unified buffer read data
+    input  logic [15:0] wt_fifo_data,    // Weight data input
+    input  logic [255:0] ub_wr_data,     // Unified buffer write data
+    output logic [255:0] ub_rd_data,     // Unified buffer read data
 
     // Status outputs to controller
     output logic        sys_busy,
@@ -25,7 +58,8 @@ module tpu_datapath (
     output logic        vpu_busy,
     output logic        vpu_done,
     output logic        dma_busy,
-    output logic        dma_done
+    output logic        dma_done,
+    output logic        wt_busy          // Weight FIFO busy
 );
 
 // =============================================================================
@@ -45,28 +79,16 @@ logic        en_capture_col2;
 logic        systolic_active;
 
 // Accumulator connections
-logic        acc_wr_en;
-logic [7:0]  acc_wr_addr;
 logic [63:0] acc_wr_data;
-logic        acc_rd_en;
-logic [7:0]  acc_rd_addr;
 logic [63:0] acc_rd_data;
 
 // VPU connections
 logic [255:0] vpu_out_data;
 logic         vpu_out_valid;
 
-// Unified buffer connections
-logic         ub_port_a_rd_en;
-logic [7:0]   ub_port_a_addr;
-logic [7:0]   ub_port_a_count;
-logic         ub_port_a_valid;
-
-logic         ub_port_b_wr_en;
-logic [7:0]   ub_port_b_addr;
-logic [7:0]   ub_port_b_count;
-logic         ub_port_b_ready;
-
+// Unified buffer connections (double-buffered)
+logic         ub_rd_valid;
+logic         ub_wr_ready;
 logic         ub_busy;
 logic         ub_done;
 
@@ -117,14 +139,17 @@ dual_weight_fifo weight_fifo_inst (
     .col2_raw  ()                   // Not used
 );
 
-// Weight FIFO control logic (simplified for now)
+// Weight FIFO control logic
 assign wf_push_col0 = wt_fifo_wr && (wt_fifo_data[9:8] == 2'b00);  // Tile ID in bits 9:8
 assign wf_push_col1 = wt_fifo_wr && (wt_fifo_data[9:8] == 2'b01);
 assign wf_push_col2 = wt_fifo_wr && (wt_fifo_data[9:8] == 2'b10);
 assign wf_pop = wt_rd_en;
 
+// Weight FIFO busy logic
+assign wt_busy = wt_mem_rd_en || wt_fifo_wr || !wt_load_done;
+
 // =============================================================================
-// SYSTOLIC ARRAY (2x2 MMU)
+// SYSTOLIC ARRAY (3x3 MMU)
 // =============================================================================
 
 mmu systolic_array (
@@ -154,28 +179,32 @@ accumulator accumulators (
     .rst_n       (rst_n),
     .acc_buf_sel (acc_buf_sel),
     .wr_en       (acc_wr_en),
-    .wr_addr     (acc_wr_addr),
+    .wr_addr     (acc_addr),
     .wr_data     (acc_wr_data),
     .rd_en       (acc_rd_en),
-    .rd_addr     (acc_rd_addr),
+    .rd_addr     (acc_addr),
     .rd_data     (acc_rd_data),
     .acc_busy    ()  // Not connected
 );
+
+// Accumulator write data (from systolic array outputs)
+assign acc_wr_data = {acc2_out, acc1_out, acc0_out};  // Direct from MMU outputs
 
 // =============================================================================
 // ACTIVATION PIPELINES (tinytinyTPU compatible)
 // One pipeline per column for post-accumulator processing
 // =============================================================================
 
-// Activation pipeline configuration (runtime programmable)
+// Activation pipeline configuration (runtime programmable from vpu_param)
 logic signed [15:0] norm_gain;
 logic signed [31:0] norm_bias;
 logic [4:0]  norm_shift;
 logic signed [15:0] q_inv_scale;
 logic signed [7:0]  q_zero_point;
 
-// Default configuration values
-assign norm_gain = 16'h0100;     // Gain = 1.0 (Q8.8)
+// Extract configuration from vpu_param (for VPU operations that need it)
+// For now, use defaults or extract from vpu_param based on vpu_mode
+assign norm_gain = (vpu_mode == 4'h8) ? vpu_param : 16'h0100;  // Batch norm uses param
 assign norm_bias = 32'sd0;       // No bias
 assign norm_shift = 5'd0;        // No shift
 assign q_inv_scale = 16'h0100;   // Scale = 1.0 (Q8.8)
@@ -196,7 +225,7 @@ logic signed [31:0] loss_col0, loss_col1, loss_col2;
 activation_pipeline ap_col0 (
     .clk(clk),
     .rst_n(rst_n),
-    .valid_in(acc_rd_en),  // Trigger when accumulator read happens
+    .valid_in(acc_rd_en && (vpu_mode != 4'h0)),  // Trigger when accumulator read happens
     .acc_in(acc_col0),
     .target_in(32'sd0),    // No loss computation for inference
     .norm_gain(norm_gain),
@@ -213,7 +242,7 @@ activation_pipeline ap_col0 (
 activation_pipeline ap_col1 (
     .clk(clk),
     .rst_n(rst_n),
-    .valid_in(acc_rd_en),
+    .valid_in(acc_rd_en && (vpu_mode != 4'h0)),
     .acc_in(acc_col1),
     .target_in(32'sd0),
     .norm_gain(norm_gain),
@@ -230,7 +259,7 @@ activation_pipeline ap_col1 (
 activation_pipeline ap_col2 (
     .clk(clk),
     .rst_n(rst_n),
-    .valid_in(acc_rd_en),
+    .valid_in(acc_rd_en && (vpu_mode != 4'h0)),
     .acc_in(acc_col2),
     .target_in(32'sd0),
     .norm_gain(norm_gain),
@@ -244,29 +273,55 @@ activation_pipeline ap_col2 (
     .loss_out(loss_col2)
 );
 
-// Combine activation pipeline outputs
-assign vpu_out_valid = ap_valid_col0 || ap_valid_col1 || ap_valid_col2;
-assign vpu_out_data = {8'b0, ap_data_col2, ap_data_col1, ap_data_col0};  // Pack 3 bytes
-assign vpu_busy = 1'b0;  // Simplified - always ready
+// VPU output generation based on mode
+always_comb begin
+    case (vpu_mode)
+        4'h1, 4'h2, 4'h3, 4'h4: begin  // ReLU, ReLU6, Sigmoid, Tanh
+            vpu_out_valid = ap_valid_col0 || ap_valid_col1 || ap_valid_col2;
+            vpu_out_data = {8'b0, ap_data_col2, ap_data_col1, ap_data_col0};
+        end
+        4'h5: begin  // ADD_BIAS
+            vpu_out_valid = ap_valid_col0 || ap_valid_col1 || ap_valid_col2;
+            vpu_out_data = {8'b0, ap_data_col2, ap_data_col1, ap_data_col0};
+        end
+        4'h6, 4'h7: begin  // MAXPOOL, AVGPOOL
+            // Pooling operations work on UB data directly
+            vpu_out_valid = ub_rd_valid;
+            vpu_out_data = ub_rd_data;  // Processed by pooling logic
+        end
+        4'h8: begin  // BATCH_NORM
+            vpu_out_valid = ap_valid_col0 || ap_valid_col1 || ap_valid_col2;
+            vpu_out_data = {8'b0, ap_data_col2, ap_data_col1, ap_data_col0};
+        end
+        default: begin
+            vpu_out_valid = 1'b0;
+            vpu_out_data = 256'h0;
+        end
+    endcase
+end
+
+// VPU busy logic
+assign vpu_busy = vpu_start && !vpu_done;
 assign vpu_done = vpu_out_valid;  // Done when output valid
 
 // =============================================================================
-// UNIFIED BUFFER (DUAL-PORT)
+// UNIFIED BUFFER (DOUBLE-BUFFERED)
 // =============================================================================
 
 unified_buffer ub (
     .clk             (clk),
     .rst_n           (rst_n),
-    .port_a_rd_en    (ub_port_a_rd_en),
-    .port_a_addr     (ub_port_a_addr),
-    .port_a_count    (ub_port_a_count),
-    .port_a_data     (ub_rd_data),
-    .port_a_valid    (ub_port_a_valid),
-    .port_b_wr_en    (ub_port_b_wr_en),
-    .port_b_addr     (ub_port_b_addr),
-    .port_b_count    (ub_port_b_count),
-    .port_b_data     (ub_wr_data),
-    .port_b_ready    (ub_port_b_ready),
+    .ub_buf_sel      (ub_buf_sel),
+    .ub_rd_en        (ub_rd_en),
+    .ub_rd_addr      (ub_rd_addr),
+    .ub_rd_count     (ub_rd_count),
+    .ub_rd_data      (ub_rd_data),
+    .ub_rd_valid     (ub_rd_valid),
+    .ub_wr_en        (ub_wr_en),
+    .ub_wr_addr      (ub_wr_addr),
+    .ub_wr_count     (ub_wr_count),
+    .ub_wr_data      (ub_wr_data),
+    .ub_wr_ready     (ub_wr_ready),
     .ub_busy         (ub_busy),
     .ub_done         (ub_done)
 );
@@ -289,32 +344,10 @@ assign col2_wt = wt_fifo_data[23:16]; // Column 2 weight
 // DATA FLOW CONTROL
 // =============================================================================
 
-// Systolic array data flow
-assign act_to_sys = ub_rd_data[15:0];  // First 16 bits as activations
-
-// Accumulator write control
-assign acc_wr_en = systolic_active;
-assign acc_wr_addr = 8'h00;  // Fixed address for now
-assign acc_wr_data = {acc2_out, acc1_out, acc0_out};  // Direct from MMU outputs
-
-// Accumulator read control (for VPU)
-assign acc_rd_en = vpu_start;
-assign acc_rd_addr = 8'h00;  // Fixed address for now
-
-// Weight FIFO read control
+// Weight FIFO read control (from systolic array)
 assign wt_rd_en = systolic_active && !wt_rd_empty;
 
-// Unified buffer read control
-assign ub_port_a_rd_en = sys_start;
-assign ub_port_a_addr = ub_rd_addr;
-assign ub_port_a_count = sys_rows;  // Read number of rows
-
-// Unified buffer write control (from VPU)
-assign ub_port_b_wr_en = vpu_out_valid;
-assign ub_port_b_addr = 8'h00;  // Fixed address for now
-assign ub_port_b_count = 8'h01; // Single write for now
-
-// DMA status (simplified - always ready)
+// DMA status (simplified - always ready for now)
 assign dma_busy = 1'b0;
 assign dma_done = 1'b1;
 

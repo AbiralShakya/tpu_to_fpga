@@ -35,29 +35,70 @@ module tpu_top (
 // INTERNAL SIGNALS
 // =============================================================================
 
-// Controller to datapath control signals
+// =============================================================================
+// CONTROLLER TO DATAPATH CONTROL SIGNALS (29 signals)
+// =============================================================================
+
+// Systolic Array Control (7 signals)
 logic        sys_start;
+logic [1:0]  sys_mode;
 logic [7:0]  sys_rows;
-logic [7:0]  ub_rd_addr;
+logic        sys_signed;
+logic        sys_transpose;
+logic [7:0]  sys_acc_addr;
+logic        sys_acc_clear;
+
+// Unified Buffer Control (7 signals)
+logic        ub_rd_en;
+logic        ub_wr_en;
+logic [8:0]  ub_rd_addr;
+logic [8:0]  ub_wr_addr;
+logic [8:0]  ub_rd_count;
+logic [8:0]  ub_wr_count;
+logic        ub_buf_sel;
+
+// Weight FIFO Control (5 signals)
+logic        wt_mem_rd_en;
+logic [23:0] wt_mem_addr;
 logic        wt_fifo_wr;
-logic        vpu_start;
-logic [3:0]  vpu_mode;
+logic [7:0]  wt_num_tiles;
 logic        wt_buf_sel;
+
+// Accumulator Control (4 signals)
+logic        acc_wr_en;
+logic        acc_rd_en;
+logic [7:0]  acc_addr;
 logic        acc_buf_sel;
 
-// Datapath status to controller
+// VPU Control (6 signals)
+logic        vpu_start;
+logic [3:0]  vpu_mode;
+logic [7:0]  vpu_in_addr;
+logic [7:0]  vpu_out_addr;
+logic [7:0]  vpu_length;
+logic [15:0] vpu_param;
+
+// =============================================================================
+// DATAPATH STATUS TO CONTROLLER (4 signals)
+// =============================================================================
+
 logic        sys_busy;
 logic        vpu_busy;
 logic        dma_busy;
+logic        wt_busy;
 
-// Datapath data interfaces
+// =============================================================================
+// DATAPATH DATA INTERFACES
+// =============================================================================
+
 logic [15:0] wt_fifo_data;
 logic [255:0] ub_wr_data;
 logic [255:0] ub_rd_data;
-logic        ub_wr_en;
-logic        ub_rd_en;
 
-// UART DMA to datapath interfaces
+// =============================================================================
+// UART DMA TO DATAPATH INTERFACES
+// =============================================================================
+
 logic        uart_ub_wr_en;
 logic [7:0]  uart_ub_wr_addr;
 logic [255:0] uart_ub_wr_data;
@@ -71,16 +112,39 @@ logic [4:0]  uart_instr_wr_addr;
 logic [31:0] uart_instr_wr_data;
 logic        uart_start_execution;
 
-// DMA control signals (legacy)
+// =============================================================================
+// DMA CONTROL SIGNALS (LEGACY)
+// =============================================================================
+
 logic        dma_start;
 logic        dma_dir;
 logic [7:0]  dma_ub_addr;
 logic [15:0] dma_length;
 logic [1:0]  dma_elem_sz;
 
-// Pipeline status
+// =============================================================================
+// PIPELINE STATUS
+// =============================================================================
+
 logic        pipeline_stall;
 logic [1:0]  current_stage;
+
+// =============================================================================
+// INTERNAL CONTROL SIGNALS (not used externally)
+// =============================================================================
+
+logic        pc_cnt;          // Internal PC control
+logic        pc_ld;           // Internal PC load
+logic        ir_ld;           // Internal IR load
+logic        if_id_flush;     // Internal pipeline flush
+logic        sync_wait;        // Internal sync wait
+logic [3:0]  sync_mask;        // Internal sync mask
+logic [15:0] sync_timeout;     // Internal sync timeout
+logic        cfg_wr_en;        // Internal config write enable
+logic [7:0]  cfg_addr;         // Internal config address
+logic [15:0] cfg_data;         // Internal config data
+logic        halt_req;         // Internal halt request
+logic        interrupt_en;     // Internal interrupt enable
 
 // =============================================================================
 // CONTROLLER INSTANCE
@@ -90,31 +154,85 @@ tpu_controller controller (
     .clk            (clk),
     .rst_n          (rst_n),
 
-    // Instruction interface (now comes from UART DMA)
+    // Instruction interface
     .instr_addr     (),  // Not used with UART DMA
     .instr_data     (32'h00000000),  // Controller uses internal program when UART triggers execution
 
-    // Status inputs
+    // Status inputs from datapath
     .sys_busy       (sys_busy),
     .vpu_busy       (vpu_busy),
     .dma_busy       (dma_busy),
+    .wt_busy        (wt_busy),
 
-    // Control outputs
+    // ========================================================================
+    // CONTROL OUTPUTS TO DATAPATH (29 signals)
+    // ========================================================================
+
+    // Systolic Array Control
     .sys_start      (sys_start),
-    .sys_rows       (sys_rows),
-    .ub_rd_addr     (ub_rd_addr),
-    .wt_fifo_wr     (wt_fifo_wr),
-    .vpu_start      (vpu_start),
-    .vpu_mode       (vpu_mode),
-    .wt_buf_sel     (wt_buf_sel),
-    .acc_buf_sel    (acc_buf_sel),
+    .sys_mode      (sys_mode),
+    .sys_rows      (sys_rows),
+    .sys_signed    (sys_signed),
+    .sys_transpose (sys_transpose),
+    .sys_acc_addr  (sys_acc_addr),
+    .sys_acc_clear (sys_acc_clear),
 
-    // DMA interface (passed through)
-    .dma_start      (dma_start),
-    .dma_dir        (dma_dir),
-    .dma_ub_addr    (dma_ub_addr),
-    .dma_length     (dma_length),
-    .dma_elem_sz    (dma_elem_sz),
+    // Unified Buffer Control
+    .ub_rd_en      (ub_rd_en),
+    .ub_wr_en      (ub_wr_en),
+    .ub_rd_addr    (ub_rd_addr),
+    .ub_wr_addr    (ub_wr_addr),
+    .ub_rd_count   (ub_rd_count),
+    .ub_wr_count   (ub_wr_count),
+    .ub_buf_sel    (ub_buf_sel),
+
+    // Weight FIFO Control
+    .wt_mem_rd_en  (wt_mem_rd_en),
+    .wt_mem_addr   (wt_mem_addr),
+    .wt_fifo_wr    (wt_fifo_wr),
+    .wt_num_tiles  (wt_num_tiles),
+    .wt_buf_sel    (wt_buf_sel),
+
+    // Accumulator Control
+    .acc_wr_en     (acc_wr_en),
+    .acc_rd_en     (acc_rd_en),
+    .acc_addr      (acc_addr),
+    .acc_buf_sel   (acc_buf_sel),
+
+    // VPU Control
+    .vpu_start     (vpu_start),
+    .vpu_mode      (vpu_mode),
+    .vpu_in_addr   (vpu_in_addr),
+    .vpu_out_addr  (vpu_out_addr),
+    .vpu_length    (vpu_length),
+    .vpu_param     (vpu_param),
+
+    // DMA Control (passed through to external DMA)
+    .dma_start     (dma_start),
+    .dma_dir       (dma_dir),
+    .dma_ub_addr   (dma_ub_addr),
+    .dma_length    (dma_length),
+    .dma_elem_sz   (dma_elem_sz),
+
+    // Internal pipeline control (not used externally)
+    .pc_cnt        (pc_cnt),
+    .pc_ld         (pc_ld),
+    .ir_ld         (ir_ld),
+    .if_id_flush   (if_id_flush),
+
+    // Sync/Control (internal)
+    .sync_wait     (sync_wait),
+    .sync_mask     (sync_mask),
+    .sync_timeout  (sync_timeout),
+
+    // Configuration Control (internal)
+    .cfg_wr_en     (cfg_wr_en),
+    .cfg_addr      (cfg_addr),
+    .cfg_data      (cfg_data),
+
+    // Halt/Interrupt (internal)
+    .halt_req      (halt_req),
+    .interrupt_en  (interrupt_en),
 
     // Pipeline status
     .pipeline_stall (pipeline_stall),
@@ -176,28 +294,62 @@ tpu_datapath datapath (
     .clk            (clk),
     .rst_n          (rst_n),
 
-    // Control inputs
+    // ========================================================================
+    // CONTROL INPUTS FROM CONTROLLER (29 signals)
+    // ========================================================================
+
+    // Systolic Array Control
     .sys_start      (sys_start),
+    .sys_mode       (sys_mode),
     .sys_rows       (sys_rows),
+    .sys_signed     (sys_signed),
+    .sys_transpose  (sys_transpose),
+    .sys_acc_addr   (sys_acc_addr),
+    .sys_acc_clear  (sys_acc_clear),
+
+    // Unified Buffer Control
+    .ub_rd_en       (ub_rd_en),
+    .ub_wr_en       (ub_wr_en),
     .ub_rd_addr     (ub_rd_addr),
+    .ub_wr_addr     (ub_wr_addr),
+    .ub_rd_count    (ub_rd_count),
+    .ub_wr_count    (ub_wr_count),
+    .ub_buf_sel     (ub_buf_sel),
+
+    // Weight FIFO Control
+    .wt_mem_rd_en   (wt_mem_rd_en),
+    .wt_mem_addr    (wt_mem_addr),
     .wt_fifo_wr     (wt_fifo_wr),
+    .wt_num_tiles   (wt_num_tiles),
+    .wt_buf_sel     (wt_buf_sel),
+
+    // Accumulator Control
+    .acc_wr_en      (acc_wr_en),
+    .acc_rd_en      (acc_rd_en),
+    .acc_addr       (acc_addr),
+    .acc_buf_sel    (acc_buf_sel),
+
+    // VPU Control
     .vpu_start      (vpu_start),
     .vpu_mode       (vpu_mode),
-    .wt_buf_sel     (wt_buf_sel),
-    .acc_buf_sel    (acc_buf_sel),
+    .vpu_in_addr    (vpu_in_addr),
+    .vpu_out_addr   (vpu_out_addr),
+    .vpu_length     (vpu_length),
+    .vpu_param      (vpu_param),
 
     // Data interfaces
     .wt_fifo_data   (wt_fifo_data),
     .ub_wr_data     (ub_wr_data),
     .ub_rd_data     (ub_rd_data),
 
-    // Status outputs
+    // Status outputs to controller
     .sys_busy       (sys_busy),
     .sys_done       (),  // Not used in controller
     .vpu_busy       (vpu_busy),
     .vpu_done       (),  // Not used in controller
     .dma_busy       (dma_busy),
-    .dma_done       ()   // Not used in controller
+    .dma_done       (),  // Not used in controller
+    .wt_busy        (wt_busy)
 );
 
 // =============================================================================
@@ -237,7 +389,7 @@ assign controller_start = uart_start_execution;
 // TOP-LEVEL STATUS
 // =============================================================================
 
-assign tpu_busy = sys_busy | vpu_busy | dma_busy;
+assign tpu_busy = sys_busy | vpu_busy | dma_busy | wt_busy;
 assign tpu_done = ~tpu_busy;  // Simplified
 
 // =============================================================================
