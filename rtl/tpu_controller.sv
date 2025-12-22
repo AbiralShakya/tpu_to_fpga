@@ -1,39 +1,39 @@
 `timescale 1ns / 1ps
 
 module tpu_controller (
-    input  logic        clk,
-    input  logic        rst_n,
+    input  wire        clk,
+    input  wire        rst_n,
 
     // Instruction memory interface (for simplicity, we'll use a direct interface)
     // In real implementation, this would be connected to external memory
-    output logic [7:0]  instr_addr,     // Instruction address to memory
-    input  logic [31:0] instr_data,     // Instruction data from memory
+    output wire [7:0]  instr_addr,     // Instruction address to memory
+    input  wire [31:0] instr_data,     // Instruction data from memory
 
     // Status inputs from datapath (for hazard detection)
-    input  logic        sys_busy,
-    input  logic        vpu_busy,
-    input  logic        dma_busy,
+    input  wire        sys_busy,
+    input  wire        vpu_busy,
+    input  wire        dma_busy,
 
     // Control outputs to datapath
-    output logic        sys_start,
-    output logic [7:0]  sys_rows,
-    output logic [7:0]  ub_rd_addr,
-    output logic        wt_fifo_wr,
-    output logic        vpu_start,
-    output logic [3:0]  vpu_mode,
-    output logic        wt_buf_sel,     // Double-buffering control
-    output logic        acc_buf_sel,    // Double-buffering control
+    output reg        sys_start,
+    output reg [7:0]  sys_rows,
+    output reg [7:0]  ub_rd_addr,
+    output reg        wt_fifo_wr,
+    output reg        vpu_start,
+    output reg [3:0]  vpu_mode,
+    output reg        wt_buf_sel,     // Double-buffering control
+    output reg        acc_buf_sel,    // Double-buffering control
 
     // DMA interface (simplified)
-    output logic        dma_start,
-    output logic        dma_dir,        // 0: host->TPU, 1: TPU->host
-    output logic [7:0]  dma_ub_addr,
-    output logic [15:0] dma_length,
-    output logic [1:0]  dma_elem_sz,
+    output reg        dma_start,
+    output reg        dma_dir,        // 0: host->TPU, 1: TPU->host
+    output reg [7:0]  dma_ub_addr,
+    output reg [15:0] dma_length,
+    output reg [1:0]  dma_elem_sz,
 
     // Pipeline status (for debugging/verification)
-    output logic        pipeline_stall,
-    output logic [1:0]  current_stage   // 2'b01: Stage1, 2'b10: Stage2
+    output wire        pipeline_stall,
+    output wire [1:0]  current_stage   // 2'b01: Stage1, 2'b10: Stage2
 );
 
 // =============================================================================
@@ -59,56 +59,56 @@ localparam [OPCODE_WIDTH-1:0] SYNC_OP      = 6'h04;
 // =============================================================================
 
 // Program Counter
-logic [7:0] pc_reg;
-logic       pc_cnt;      // Increment PC
-logic       pc_ld;       // Load PC from pc_in
+reg [7:0] pc_reg;
+wire       pc_cnt;      // Increment PC
+wire       pc_ld;       // Load PC from pc_in
 
 // Instruction Register
-logic [31:0] ir_reg;
-logic        ir_ld;      // Load IR from instruction memory
+reg [31:0] ir_reg;
+wire        ir_ld;      // Load IR from instruction memory
 
 // Instruction decoding
-logic [OPCODE_WIDTH-1:0] opcode;
-logic [7:0]              arg1, arg2, arg3;
-logic [1:0]              flags;
-logic [3:0]              unit_sel;  // For future expansion
+wire [OPCODE_WIDTH-1:0] opcode;
+wire [7:0]              arg1, arg2, arg3;
+wire [1:0]              flags;
+wire [3:0]              unit_sel;  // For future expansion
 
 // =============================================================================
 // IF/ID PIPELINE REGISTER (45 bits total)
 // =============================================================================
 
-logic        if_id_valid;
-logic [7:0]  if_id_pc;
-logic [OPCODE_WIDTH-1:0] if_id_opcode;
-logic [7:0]             if_id_arg1, if_id_arg2, if_id_arg3;
-logic [1:0]             if_id_flags;
-logic [3:0]             if_id_unit_sel;
+reg        if_id_valid;
+reg [7:0]  if_id_pc;
+reg [OPCODE_WIDTH-1:0] if_id_opcode;
+reg [7:0]             if_id_arg1, if_id_arg2, if_id_arg3;
+reg [1:0]             if_id_flags;
+reg [3:0]             if_id_unit_sel;
 
 // Pipeline control
-logic        if_id_stall;
-logic        if_id_flush;
+wire        if_id_stall;
+wire        if_id_flush;
 
 // =============================================================================
 // STAGE 2: EXECUTE REGISTERS
 // =============================================================================
 
 // Control signal generation
-logic        exec_valid;
-logic [OPCODE_WIDTH-1:0] exec_opcode;
-logic [7:0]             exec_arg1, exec_arg2, exec_arg3;
-logic [1:0]             exec_flags;
+reg        exec_valid;
+reg [OPCODE_WIDTH-1:0] exec_opcode;
+reg [7:0]             exec_arg1, exec_arg2, exec_arg3;
+reg [1:0]             exec_flags;
 
 // =============================================================================
 // HAZARD DETECTION
 // =============================================================================
 
-logic hazard_detected;
+wire hazard_detected;
 
 // =============================================================================
 // PROGRAM COUNTER LOGIC
 // =============================================================================
 
-always_ff @(posedge clk or negedge rst_n) begin
+always @ (posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         pc_reg <= 8'h00;
     end else if (pc_ld) begin
@@ -123,7 +123,7 @@ end
 // INSTRUCTION REGISTER LOGIC
 // =============================================================================
 
-always_ff @(posedge clk or negedge rst_n) begin
+always @ (posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         ir_reg <= 32'h00000000;
     end else if (ir_ld && !if_id_stall) begin
@@ -147,7 +147,7 @@ assign unit_sel = 4'h0;  // Reserved for future use
 // IF/ID PIPELINE REGISTER
 // =============================================================================
 
-always_ff @(posedge clk or negedge rst_n) begin
+always @ (posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         if_id_valid    <= 1'b0;
         if_id_pc       <= 8'h00;
@@ -194,7 +194,7 @@ assign pipeline_stall = hazard_detected;
 // =============================================================================
 
 // Pipeline exec signals
-always_ff @(posedge clk or negedge rst_n) begin
+always @ (posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         exec_valid  <= 1'b0;
         exec_opcode <= {OPCODE_WIDTH{1'b0}};
@@ -216,21 +216,8 @@ end
 // CONTROL SIGNAL GENERATION
 // =============================================================================
 
-// Default values
-assign sys_start   = 1'b0;
-assign sys_rows    = 8'h00;
-assign ub_rd_addr  = 8'h00;
-assign wt_fifo_wr  = 1'b0;
-assign vpu_start   = 1'b0;
-assign vpu_mode    = 4'h0;
-assign dma_start   = 1'b0;
-assign dma_dir     = 1'b0;
-assign dma_ub_addr = 8'h00;
-assign dma_length  = 16'h0000;
-assign dma_elem_sz = 2'b00;
-
 // Control signal generation based on opcode
-always_comb begin
+always @* begin
     // Default assignments
     sys_start   = 1'b0;
     sys_rows    = 8'h00;
@@ -238,6 +225,8 @@ always_comb begin
     wt_fifo_wr  = 1'b0;
     vpu_start   = 1'b0;
     vpu_mode    = 4'h0;
+    wt_buf_sel  = 1'b0;  // Default buffer selection
+    acc_buf_sel = 1'b0;  // Default buffer selection
     dma_start   = 1'b0;
     dma_dir     = 1'b0;
     dma_ub_addr = 8'h00;

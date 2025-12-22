@@ -1,0 +1,8 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1766362772" />
+    <testcase name="test_activation_pipeline_reset" classname="test_activation_pipeline" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_activation_pipeline.py" lineno="10" time="0.00048470497131347656" sim_time_ns="10.0" ratio_time="20631.10673880964" />
+    <testcase name="test_activation_pipeline_basic_flow" classname="test_activation_pipeline" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_activation_pipeline.py" lineno="36" time="0.0004317760467529297" sim_time_ns="71.0" ratio_time="164437.09773605742" />
+    <testcase name="test_activation_pipeline_negative_input" classname="test_activation_pipeline" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_activation_pipeline.py" lineno="76" time="0.0003418922424316406" sim_time_ns="71.00000000000001" ratio_time="207667.77126917717" />
+  </testsuite>
+</testsuites>

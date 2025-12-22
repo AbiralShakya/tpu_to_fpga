@@ -1,0 +1,14 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1766361572" />
+    <testcase name="test_activation_pipeline_full_flow" classname="test_activation_pipeline" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_activation_pipeline.py" lineno="10" time="0.0008733272552490234" sim_time_ns="0.0" ratio_time="0.0">
+      <failure error_type="AttributeError" error_msg="activation_pipeline contains no child object named data_in" />
+    </testcase>
+    <testcase name="test_activation_pipeline_saturation" classname="test_activation_pipeline" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_activation_pipeline.py" lineno="48" time="0.0002760887145996094" sim_time_ns="0.0" ratio_time="0.0">
+      <failure error_type="AttributeError" error_msg="activation_pipeline contains no child object named data_in" />
+    </testcase>
+    <testcase name="test_activation_pipeline_with_loss" classname="test_activation_pipeline" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_activation_pipeline.py" lineno="83" time="0.0002219676971435547" sim_time_ns="0.0" ratio_time="0.0">
+      <failure error_type="AttributeError" error_msg="activation_pipeline contains no child object named data_in" />
+    </testcase>
+  </testsuite>
+</testsuites>

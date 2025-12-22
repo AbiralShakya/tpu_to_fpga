@@ -50,7 +50,7 @@ always_ff @(posedge clk or negedge rst_n) begin
         else begin
             // Compute mode: MAC operation
             act_out <= act_in;
-            psum_out <= psum_in + (act_in * weight_reg);  // Simplified MAC for compatibility
+            psum_out <= psum_in + (act_in * weight_reg);
         end
     end
 end

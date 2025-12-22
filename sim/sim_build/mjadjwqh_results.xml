@@ -1,0 +1,14 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1766361535" />
+    <testcase name="test_activation_func_relu" classname="test_activation_func" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_activation_func.py" lineno="10" time="0.0007159709930419922" sim_time_ns="0.0" ratio_time="0.0">
+      <failure error_type="AttributeError" error_msg="activation_func contains no child object named activation_type" />
+    </testcase>
+    <testcase name="test_activation_func_relu6" classname="test_activation_func" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_activation_func.py" lineno="47" time="0.00024509429931640625" sim_time_ns="0.0" ratio_time="0.0">
+      <failure error_type="AttributeError" error_msg="activation_func contains no child object named activation_type" />
+    </testcase>
+    <testcase name="test_activation_func_passthrough" classname="test_activation_func" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_activation_func.py" lineno="85" time="0.00020194053649902344" sim_time_ns="0.0" ratio_time="0.0">
+      <failure error_type="AttributeError" error_msg="activation_func contains no child object named activation_type" />
+    </testcase>
+  </testsuite>
+</testsuites>

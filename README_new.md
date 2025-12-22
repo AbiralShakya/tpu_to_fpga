@@ -303,7 +303,7 @@ Environment Variables:
 |test_activation_pipeline.py| activation_pipeline| Full pipeline, saturation     |
 | test_mlp_integration.py   | mlp_top             | Multi-layer MLP inference      |
 
-All core module tests pass with Verilator 5.042. Integration modules have been validated.
+All 9 test suites pass with Verilator 5.042.
 
 --------------------------------------------------------------------------------
 

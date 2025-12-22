@@ -749,4 +749,4 @@ program = [
 - **Accumulator Conflicts**: Read/write buffer selection
 - **Weight FIFO**: Buffer swapping for continuous operation
 
-This ISA provides a complete programming interface for neural network acceleration on the TPU v1 architecture! 🚀
+This ISA provides a complete programming interface for neural network acceleration on the TPU v1 architecture!

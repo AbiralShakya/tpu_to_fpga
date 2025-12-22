@@ -1,0 +1,9 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1766363130" />
+    <testcase name="test_mlp_reset" classname="test_mlp" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_mlp.py" lineno="10" time="0.0005781650543212891" sim_time_ns="10.0" ratio_time="17296.098969072165" />
+    <testcase name="test_mlp_weight_loading" classname="test_mlp" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_mlp.py" lineno="45" time="0.0006542205810546875" sim_time_ns="100.0" ratio_time="152853.6443148688" />
+    <testcase name="test_mlp_activation_loading" classname="test_mlp" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_mlp.py" lineno="99" time="0.00031495094299316406" sim_time_ns="41.000000000000014" ratio_time="130179.0037850114" />
+    <testcase name="test_mlp_basic_operation" classname="test_mlp" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_mlp.py" lineno="141" time="0.0012009143829345703" sim_time_ns="270.0" ratio_time="224828.68374032163" />
+  </testsuite>
+</testsuites>

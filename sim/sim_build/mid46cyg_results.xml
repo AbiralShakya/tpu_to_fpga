@@ -1,0 +1,10 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1766363330" />
+    <testcase name="test_controller_basic_decode" classname="test_tpu_controller_isa" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_tpu_controller_isa.py" lineno="10" time="0.0005950927734375" sim_time_ns="41.0" ratio_time="68896.82051282052" />
+    <testcase name="test_controller_reset_state" classname="test_tpu_controller_isa" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_tpu_controller_isa.py" lineno="40" time="0.0003421306610107422" sim_time_ns="41.00000000000001" ratio_time="119837.25714285717" />
+    <testcase name="test_controller_hazard_stall" classname="test_tpu_controller_isa" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_tpu_controller_isa.py" lineno="73" time="0.00037980079650878906" sim_time_ns="51.000000000000014" ratio_time="134280.91902071566" />
+    <testcase name="test_controller_multiple_instructions" classname="test_tpu_controller_isa" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_tpu_controller_isa.py" lineno="122" time="0.0005860328674316406" sim_time_ns="141.0" ratio_time="240600.83970707894" />
+    <testcase name="test_controller_instruction_fields" classname="test_tpu_controller_isa" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_tpu_controller_isa.py" lineno="155" time="0.0003209114074707031" sim_time_ns="51.0" ratio_time="158922.36552748884" />
+  </testsuite>
+</testsuites>

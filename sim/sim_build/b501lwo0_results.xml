@@ -1,0 +1,11 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1766362190" />
+    <testcase name="test_weight_fifo_reset" classname="test_weight_fifo" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_weight_fifo.py" lineno="10" time="0.007337093353271484" sim_time_ns="10.0" ratio_time="1362.9375446805745">
+      <failure error_type="AssertionError" error_msg="wt_load_done should be 0 after reset, got 1&#10;assert Logic('1') == 0&#10; +  where Logic('1') = LogicObject(weight_fifo.wt_load_done).value&#10; +    where LogicObject(weight_fifo.wt_load_done) = HierarchyObject(weight_fifo).wt_load_done" />
+    </testcase>
+    <testcase name="test_weight_fifo_basic_ops" classname="test_weight_fifo" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_weight_fifo.py" lineno="32" time="0.001013040542602539" sim_time_ns="41.0" ratio_time="40472.22028712638" />
+    <testcase name="test_weight_fifo_double_buffering" classname="test_weight_fifo" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_weight_fifo.py" lineno="70" time="0.0004291534423828125" sim_time_ns="60.99999999999999" ratio_time="142140.3022222222" />
+    <testcase name="test_weight_fifo_load_done" classname="test_weight_fifo" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_weight_fifo.py" lineno="123" time="0.00034117698669433594" sim_time_ns="60.999999999999986" ratio_time="178792.83298392728" />
+  </testsuite>
+</testsuites>

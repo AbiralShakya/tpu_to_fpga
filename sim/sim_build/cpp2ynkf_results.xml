@@ -1,0 +1,9 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1766362916" />
+    <testcase name="test_dual_fifo_reset" classname="test_dual_fifo" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_dual_fifo.py" lineno="10" time="0.0003879070281982422" sim_time_ns="10.0" ratio_time="25779.37307928703" />
+    <testcase name="test_dual_fifo_column_independence" classname="test_dual_fifo" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_dual_fifo.py" lineno="32" time="0.00035691261291503906" sim_time_ns="61.00000000000001" ratio_time="170910.18303273214" />
+    <testcase name="test_dual_fifo_skew_timing" classname="test_dual_fifo" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_dual_fifo.py" lineno="80" time="0.0007638931274414062" sim_time_ns="161.0" ratio_time="210762.46691635455" />
+    <testcase name="test_dual_fifo_wraparound" classname="test_dual_fifo" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_dual_fifo.py" lineno="130" time="0.0005669593811035156" sim_time_ns="121.0" ratio_time="213419.16904962153" />
+  </testsuite>
+</testsuites>

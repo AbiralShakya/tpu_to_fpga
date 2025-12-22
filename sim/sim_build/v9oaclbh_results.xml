@@ -1,0 +1,9 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1766363337" />
+    <testcase name="test_weight_fifo_reset" classname="test_weight_fifo" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_weight_fifo.py" lineno="10" time="0.00731205940246582" sim_time_ns="21.0" ratio_time="2871.9679154846913" />
+    <testcase name="test_weight_fifo_basic_ops" classname="test_weight_fifo" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_weight_fifo.py" lineno="36" time="0.0010151863098144531" sim_time_ns="41.0" ratio_time="40386.67543447628" />
+    <testcase name="test_weight_fifo_double_buffering" classname="test_weight_fifo" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_weight_fifo.py" lineno="74" time="0.0004279613494873047" sim_time_ns="60.99999999999999" ratio_time="142536.23621169914" />
+    <testcase name="test_weight_fifo_load_done" classname="test_weight_fifo" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_weight_fifo.py" lineno="127" time="0.0003497600555419922" sim_time_ns="60.999999999999986" ratio_time="174405.27880027262" />
+  </testsuite>
+</testsuites>

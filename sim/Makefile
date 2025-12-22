@@ -27,6 +27,7 @@ $(shell mkdir -p $(WAVE_DIR))
 RTL_SOURCES := \
     $(RTL_DIR)/pe.sv \
     $(RTL_DIR)/mmu.sv \
+    $(RTL_DIR)/weight_fifo.sv \
     $(RTL_DIR)/dual_weight_fifo.sv \
     $(RTL_DIR)/accumulator.sv \
     $(RTL_DIR)/accumulator_align.sv \
@@ -36,6 +37,7 @@ RTL_SOURCES := \
     $(RTL_DIR)/normalizer.sv \
     $(RTL_DIR)/loss_block.sv \
     $(RTL_DIR)/unified_buffer.sv \
+    $(RTL_DIR)/tpu_controller.sv \
     $(RTL_DIR)/mlp_top.sv
 
 # cocotb-test environment variables
@@ -84,10 +86,10 @@ test_mmu:
 	export TOPLEVEL=mmu && export MODULE=test_mmu && WAVES=$(WAVES) make
 
 test_weight_fifo:
-	export TOPLEVEL=weight_fifo && export MODULE=test_weight_fifo && WAVES=$(WAVES) make
+	export TOPLEVEL=weight_fifo && export MODULE=test_weight_fifo && export VERILOG_SOURCES="../rtl/weight_fifo.sv" && WAVES=$(WAVES) make
 
 test_dual_fifo:
-	export TOPLEVEL=dual_weight_fifo && export MODULE=test_dual_weight_fifo && WAVES=$(WAVES) make
+	export TOPLEVEL=dual_weight_fifo && export MODULE=test_dual_fifo && WAVES=$(WAVES) make
 
 test_accumulator:
 	export TOPLEVEL=accumulator && export MODULE=test_accumulator && WAVES=$(WAVES) make
@@ -102,7 +104,10 @@ test_activation_pipeline:
 	export TOPLEVEL=activation_pipeline && export MODULE=test_activation_pipeline && WAVES=$(WAVES) make
 
 test_mlp:
-	export TOPLEVEL=mlp_top && export MODULE=test_mlp_integration && WAVES=$(WAVES) make
+	export TOPLEVEL=mlp_top && export MODULE=test_mlp && WAVES=$(WAVES) make
+
+test_isa:
+	export TOPLEVEL=tpu_controller && export MODULE=test_tpu_controller_isa && export VERILOG_SOURCES="../rtl/tpu_controller.sv" && export TOPLEVEL_LANG=verilog && WAVES=$(WAVES) make
 
 # Lint
 lint:

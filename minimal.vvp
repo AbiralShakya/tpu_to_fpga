@@ -1,0 +1,62 @@
+#! /opt/homebrew/Cellar/icarus-verilog/12.0/bin/vvp
+:ivl_version "12.0 (stable)";
+:ivl_delay_selection "TYPICAL";
+:vpi_time_precision + 0;
+:vpi_module "/opt/homebrew/Cellar/icarus-verilog/12.0/lib/ivl/system.vpi";
+:vpi_module "/opt/homebrew/Cellar/icarus-verilog/12.0/lib/ivl/vhdl_sys.vpi";
+:vpi_module "/opt/homebrew/Cellar/icarus-verilog/12.0/lib/ivl/vhdl_textio.vpi";
+:vpi_module "/opt/homebrew/Cellar/icarus-verilog/12.0/lib/ivl/v2005_math.vpi";
+:vpi_module "/opt/homebrew/Cellar/icarus-verilog/12.0/lib/ivl/va_math.vpi";
+:vpi_module "/opt/homebrew/Cellar/icarus-verilog/12.0/lib/ivl/v2009.vpi";
+S_0x12de07760 .scope package, "$unit" "$unit" 2 1;
+ .timescale 0 0;
+S_0x12de0eb80 .scope module, "minimal_controller" "minimal_controller" 3 1;
+ .timescale 0 0;
+    .port_info 0 /INPUT 1 "clk";
+    .port_info 1 /INPUT 1 "rst_n";
+    .port_info 2 /OUTPUT 1 "sys_start";
+    .port_info 3 /OUTPUT 8 "sys_rows";
+    .port_info 4 /OUTPUT 8 "ub_rd_addr";
+    .port_info 5 /OUTPUT 1 "wt_fifo_wr";
+    .port_info 6 /OUTPUT 1 "vpu_start";
+    .port_info 7 /OUTPUT 4 "vpu_mode";
+    .port_info 8 /OUTPUT 1 "wt_buf_sel";
+    .port_info 9 /OUTPUT 1 "acc_buf_sel";
+    .port_info 10 /OUTPUT 1 "dma_start";
+    .port_info 11 /OUTPUT 1 "dma_dir";
+    .port_info 12 /OUTPUT 8 "dma_ub_addr";
+    .port_info 13 /OUTPUT 16 "dma_length";
+    .port_info 14 /OUTPUT 2 "dma_elem_sz";
+    .port_info 15 /OUTPUT 1 "pipeline_stall";
+    .port_info 16 /OUTPUT 2 "current_stage";
+v0x12de0e150_0 .var "acc_buf_sel", 0 0;
+o0x130040040 .functor BUFZ 1, C4<z>; HiZ drive
+v0x12de1e120_0 .net "clk", 0 0, o0x130040040;  0 drivers
+v0x12de1e1c0_0 .var "current_stage", 1 0;
+v0x12de1e260_0 .var "dma_dir", 0 0;
+v0x12de1e300_0 .var "dma_elem_sz", 1 0;
+v0x12de1e3f0_0 .var "dma_length", 15 0;
+v0x12de1e4a0_0 .var "dma_start", 0 0;
+v0x12de1e540_0 .var "dma_ub_addr", 7 0;
+v0x12de1e5f0_0 .var "pipeline_stall", 0 0;
+o0x1300401c0 .functor BUFZ 1, C4<z>; HiZ drive
+v0x12de1e700_0 .net "rst_n", 0 0, o0x1300401c0;  0 drivers
+v0x12de1e790_0 .var "sys_rows", 7 0;
+v0x12de1e840_0 .var "sys_start", 0 0;
+v0x12de1e8e0_0 .var "ub_rd_addr", 7 0;
+v0x12de1e990_0 .var "vpu_mode", 3 0;
+v0x12de1ea40_0 .var "vpu_start", 0 0;
+v0x12de1eae0_0 .var "wt_buf_sel", 0 0;
+v0x12de1eb80_0 .var "wt_fifo_wr", 0 0;
+E_0x12de0ee90 .event "_ivl_0";
+    .scope S_0x12de0eb80;
+T_0 ;
+    %wait E_0x12de0ee90;
+    %jmp T_0;
+    .thread T_0;
+# The file index is used to find the file name in the following table.
+:file_names 4;
+    "N/A";
+    "<interactive>";
+    "-";
+    "minimal_controller.v";

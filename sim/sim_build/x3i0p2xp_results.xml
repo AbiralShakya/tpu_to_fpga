@@ -1,0 +1,10 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1766361560" />
+    <testcase name="test_normalizer_gain_bias" classname="test_normalizer" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_normalizer.py" lineno="10" time="0.0006778240203857422" sim_time_ns="70.0" ratio_time="103271.64263102357" />
+    <testcase name="test_normalizer_shift" classname="test_normalizer" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_normalizer.py" lineno="52" time="0.00039887428283691406" sim_time_ns="80.0" ratio_time="200564.44710101615" />
+    <testcase name="test_normalizer_full_pipeline" classname="test_normalizer" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_normalizer.py" lineno="95" time="0.0004489421844482422" sim_time_ns="31.0" ratio_time="69051.20764737122">
+      <failure error_type="AssertionError" error_msg="Full normalization(4) should be 8, got 00000000000000000000000000001011&#10;assert LogicArray('00000000000000000000000000001011', Range(31, 'downto', 0)) == 8&#10; +  where LogicArray('00000000000000000000000000001011', Range(31, 'downto', 0)) = LogicArrayObject(normalizer.data_out).value&#10; +    where LogicArrayObject(normalizer.data_out) = HierarchyObject(normalizer).data_out" />
+    </testcase>
+  </testsuite>
+</testsuites>

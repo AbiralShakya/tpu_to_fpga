@@ -1,0 +1,9 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1766362913" />
+    <testcase name="test_accumulator_reset" classname="test_accumulator" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_accumulator.py" lineno="10" time="0.0004851818084716797" sim_time_ns="10.0" ratio_time="20610.830466830466" />
+    <testcase name="test_accumulator_overwrite_mode" classname="test_accumulator" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_accumulator.py" lineno="34" time="0.0006189346313476562" sim_time_ns="101.0" ratio_time="163183.63020030817" />
+    <testcase name="test_accumulator_accumulate_mode" classname="test_accumulator" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_accumulator.py" lineno="111" time="0.000446319580078125" sim_time_ns="101.00000000000001" ratio_time="226295.2478632479" />
+    <testcase name="test_accumulator_double_buffering" classname="test_accumulator" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_accumulator.py" lineno="167" time="0.0008020401000976562" sim_time_ns="181.0" ratio_time="225674.50178359097" />
+  </testsuite>
+</testsuites>

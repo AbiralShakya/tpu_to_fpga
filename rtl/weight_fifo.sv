@@ -179,7 +179,7 @@ assign rd_empty = selected_rd_empty;
 assign rd_almost_empty = selected_rd_almost_empty;
 
 // Weight loading completion detection
-assign wt_load_done = (buf0_wr_count == wt_num_tiles) ||
-                      (buf1_wr_count == wt_num_tiles);
+assign wt_load_done = (buf0_wr_count == { {(ADDR_WIDTH-7){1'b0}}, wt_num_tiles }) ||
+                      (buf1_wr_count == { {(ADDR_WIDTH-7){1'b0}}, wt_num_tiles });
 
 endmodule

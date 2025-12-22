@@ -1,0 +1,15 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1766360224" />
+    <testcase name="test_accumulator_reset" classname="test_accumulator" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_accumulator.py" lineno="10" time="0.0004019737243652344" sim_time_ns="10.0" ratio_time="24877.247924080664" />
+    <testcase name="test_accumulator_overwrite_mode" classname="test_accumulator" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_accumulator.py" lineno="34" time="0.0004551410675048828" sim_time_ns="31.0" ratio_time="68110.75117862756">
+      <failure error_type="AssertionError" error_msg="valid_out should be 1 after write&#10;assert Logic('0') == 1&#10; +  where Logic('0') = LogicObject(accumulator.valid_out).value&#10; +    where LogicObject(accumulator.valid_out) = HierarchyObject(accumulator).valid_out" />
+    </testcase>
+    <testcase name="test_accumulator_accumulate_mode" classname="test_accumulator" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_accumulator.py" lineno="84" time="0.00037670135498046875" sim_time_ns="30.999999999999993" ratio_time="82293.30632911391">
+      <failure error_type="AssertionError" error_msg="acc_col0_out should be 100, got 00000000000000000000000000000000&#10;assert LogicArray('00000000000000000000000000000000', Range(31, 'downto', 0)) == 100&#10; +  where LogicArray('00000000000000000000000000000000', Range(31, 'downto', 0)) = LogicArrayObject(accumulator.acc_col0_out).value&#10; +    where LogicArrayObject(accumulator.acc_col0_out) = HierarchyObject(accumulator).acc_col0_out" />
+    </testcase>
+    <testcase name="test_accumulator_double_buffering" classname="test_accumulator" file="/Users/abiralshakya/Documents/tpu_to_fpga/sim/tests/test_accumulator.py" lineno="131" time="0.0005362033843994141" sim_time_ns="51.0" ratio_time="95113.16318363717">
+      <failure error_type="AssertionError" error_msg="Buffer 0 col0 should be 111, got 00000000000000000000000000000000&#10;assert LogicArray('00000000000000000000000000000000', Range(31, 'downto', 0)) == 111&#10; +  where LogicArray('00000000000000000000000000000000', Range(31, 'downto', 0)) = LogicArrayObject(accumulator.acc_col0_out).value&#10; +    where LogicArrayObject(accumulator.acc_col0_out) = HierarchyObject(accumulator).acc_col0_out" />
+    </testcase>
+  </testsuite>
+</testsuites>
