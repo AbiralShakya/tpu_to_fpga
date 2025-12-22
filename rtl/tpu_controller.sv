@@ -19,9 +19,9 @@ module tpu_controller (
     // =============================================================================
 
     // Pipeline/Program Control (4 signals)
-    output reg         pc_cnt,         // Program counter increment
+    output wire        pc_cnt,         // Program counter increment
     output reg         pc_ld,          // Program counter load
-    output reg         ir_ld,          // Instruction register load
+    output wire        ir_ld,          // Instruction register load
     output reg         if_id_flush,    // Pipeline flush
 
     // Systolic Array Control (7 signals)
@@ -230,8 +230,12 @@ assign arg3    = ir_reg[9:2];
 assign flags   = ir_reg[1:0];
 
 // =============================================================================
-// IF/ID PIPELINE REGISTER
+// IF/ID PIPELINE REGISTER (with buffer state)
 // =============================================================================
+
+reg if_id_wt_buf_sel;
+reg if_id_acc_buf_sel;
+reg if_id_ub_buf_sel;
 
 always @ (posedge clk or negedge rst_n) begin
     if (!rst_n) begin
@@ -242,6 +246,9 @@ always @ (posedge clk or negedge rst_n) begin
         if_id_arg2     <= 8'h00;
         if_id_arg3     <= 8'h00;
         if_id_flags    <= 2'b00;
+        if_id_wt_buf_sel  <= 1'b0;
+        if_id_acc_buf_sel <= 1'b0;
+        if_id_ub_buf_sel  <= 1'b0;
     end else if (if_id_flush) begin
         // Flush pipeline on exceptions/jumps
         if_id_valid    <= 1'b0;
@@ -251,8 +258,11 @@ always @ (posedge clk or negedge rst_n) begin
         if_id_arg2     <= 8'h00;
         if_id_arg3     <= 8'h00;
         if_id_flags    <= 2'b00;
+        if_id_wt_buf_sel  <= 1'b0;
+        if_id_acc_buf_sel <= 1'b0;
+        if_id_ub_buf_sel  <= 1'b0;
     end else if (!if_id_stall) begin
-        // Normal pipeline advance
+        // Normal pipeline advance - capture buffer state at decode time
         if_id_valid    <= 1'b1;
         if_id_pc       <= pc_reg;
         if_id_opcode   <= opcode;
@@ -260,12 +270,16 @@ always @ (posedge clk or negedge rst_n) begin
         if_id_arg2     <= arg2;
         if_id_arg3     <= arg3;
         if_id_flags    <= flags;
+        // Capture current buffer state for this instruction
+        if_id_wt_buf_sel  <= wt_buf_sel_reg;
+        if_id_acc_buf_sel <= acc_buf_sel_reg;
+        if_id_ub_buf_sel  <= ub_buf_sel_reg;
     end
     // Hold values when stalled
 end
 
 // =============================================================================
-// BUFFER STATE REGISTERS (for toggle tracking)
+// BUFFER STATE REGISTERS (updated only on SYNC execution)
 // =============================================================================
 
 always @ (posedge clk or negedge rst_n) begin
@@ -273,12 +287,15 @@ always @ (posedge clk or negedge rst_n) begin
         wt_buf_sel_reg  <= 1'b0;
         acc_buf_sel_reg <= 1'b0;
         ub_buf_sel_reg  <= 1'b0;
-    end else begin
-        // Update registers when toggled (handled in control signal generation)
-        wt_buf_sel_reg  <= wt_buf_sel;
-        acc_buf_sel_reg <= acc_buf_sel;
-        ub_buf_sel_reg  <= ub_buf_sel;
+    end else if (exec_valid && (exec_opcode == SYNC_OP)) begin
+        // Only update buffer state when SYNC instruction executes
+        // This ensures proper pipelining - instructions already in pipeline
+        // use their captured buffer state, only future instructions see new state
+        wt_buf_sel_reg  <= ~wt_buf_sel_reg;
+        acc_buf_sel_reg <= ~acc_buf_sel_reg;
+        ub_buf_sel_reg  <= ~ub_buf_sel_reg;
     end
+    // Otherwise hold current state
 end
 
 // =============================================================================
@@ -346,8 +363,12 @@ assign if_id_stall = hazard_detected | sync_hazard;
 assign pipeline_stall = if_id_stall;
 
 // =============================================================================
-// STAGE 2: EXECUTE LOGIC
+// STAGE 2: EXECUTE LOGIC (with pipelined buffer state)
 // =============================================================================
+
+reg exec_wt_buf_sel;
+reg exec_acc_buf_sel;
+reg exec_ub_buf_sel;
 
 always @ (posedge clk or negedge rst_n) begin
     if (!rst_n) begin
@@ -357,13 +378,21 @@ always @ (posedge clk or negedge rst_n) begin
         exec_arg2   <= 8'h00;
         exec_arg3   <= 8'h00;
         exec_flags  <= 2'b00;
+        exec_wt_buf_sel  <= 1'b0;
+        exec_acc_buf_sel <= 1'b0;
+        exec_ub_buf_sel  <= 1'b0;
     end else begin
+        // Pipeline advance - propagate buffer state from decode stage
         exec_valid  <= if_id_valid;
         exec_opcode <= if_id_opcode;
         exec_arg1   <= if_id_arg1;
         exec_arg2   <= if_id_arg2;
         exec_arg3   <= if_id_arg3;
         exec_flags  <= if_id_flags;
+        // Propagate buffer state captured at decode time
+        exec_wt_buf_sel  <= if_id_wt_buf_sel;
+        exec_acc_buf_sel <= if_id_acc_buf_sel;
+        exec_ub_buf_sel  <= if_id_ub_buf_sel;
     end
 end
 
@@ -398,20 +427,20 @@ always @* begin
     ub_wr_addr      = 9'h000;
     ub_rd_count     = 9'h000;
     ub_wr_count     = 9'h000;
-    ub_buf_sel      = ub_buf_sel_reg;  // Maintain current state
+    ub_buf_sel      = exec_ub_buf_sel;  // Use pipelined buffer state
 
     // Weight FIFO Control
     wt_mem_rd_en    = 1'b0;
     wt_mem_addr     = 24'h000000;
     wt_fifo_wr      = 1'b0;
     wt_num_tiles    = 8'h00;
-    wt_buf_sel      = wt_buf_sel_reg;  // Maintain current state
+    wt_buf_sel      = exec_wt_buf_sel;  // Use pipelined buffer state
 
     // Accumulator Control
     acc_wr_en       = 1'b0;
     acc_rd_en       = 1'b0;
     acc_addr        = 8'h00;
-    acc_buf_sel     = acc_buf_sel_reg;  // Maintain current state
+    acc_buf_sel     = exec_acc_buf_sel;  // Use pipelined buffer state
 
     // VPU Control
     vpu_start       = 1'b0;
@@ -501,7 +530,7 @@ always @* begin
             // ================================================================
             LD_UB_OP: begin
                 ub_rd_en        = 1'b1;
-                ub_rd_addr      = {ub_buf_sel_reg, exec_arg1};
+                ub_rd_addr      = {exec_ub_buf_sel, exec_arg1};
                 ub_rd_count     = {1'b0, exec_arg2};
                 pc_cnt_internal = 1'b1;
                 ir_ld_internal  = 1'b1;
@@ -512,7 +541,7 @@ always @* begin
             // ================================================================
             ST_UB_OP: begin
                 ub_wr_en        = 1'b1;
-                ub_wr_addr      = {~ub_buf_sel_reg, exec_arg1};
+                ub_wr_addr      = {~exec_ub_buf_sel, exec_arg1};
                 ub_wr_count     = {1'b0, exec_arg2};
                 pc_cnt_internal = 1'b1;
                 ir_ld_internal  = 1'b1;
@@ -530,11 +559,11 @@ always @* begin
                 sys_acc_addr    = exec_arg2;
                 sys_acc_clear   = 1'b1;
                 ub_rd_en        = 1'b1;
-                ub_rd_addr      = {ub_buf_sel_reg, exec_arg1};
+                ub_rd_addr      = {exec_ub_buf_sel, exec_arg1};
                 ub_rd_count     = 9'h001;
                 acc_wr_en       = 1'b1;
                 acc_addr        = exec_arg2;
-                acc_buf_sel     = acc_buf_sel_reg;
+                acc_buf_sel     = exec_acc_buf_sel;
                 pc_cnt_internal = 1'b1;
                 ir_ld_internal  = 1'b1;
             end
@@ -551,11 +580,11 @@ always @* begin
                 sys_acc_addr    = exec_arg2;
                 sys_acc_clear   = 1'b1;
                 ub_rd_en        = 1'b1;
-                ub_rd_addr      = {ub_buf_sel_reg, exec_arg1};
+                ub_rd_addr      = {exec_ub_buf_sel, exec_arg1};
                 ub_rd_count     = 9'h001;
                 acc_wr_en       = 1'b1;
                 acc_addr        = exec_arg2;
-                acc_buf_sel     = acc_buf_sel_reg;
+                acc_buf_sel     = exec_acc_buf_sel;
                 pc_cnt_internal = 1'b1;
                 ir_ld_internal  = 1'b1;
             end
@@ -572,11 +601,11 @@ always @* begin
                 sys_acc_addr    = exec_arg2;
                 sys_acc_clear   = 1'b0;  // Don't clear - accumulate!
                 ub_rd_en        = 1'b1;
-                ub_rd_addr      = {ub_buf_sel_reg, exec_arg1};
+                ub_rd_addr      = {exec_ub_buf_sel, exec_arg1};
                 ub_rd_count     = 9'h001;
                 acc_wr_en       = 1'b1;
                 acc_addr        = exec_arg2;
-                acc_buf_sel     = acc_buf_sel_reg;
+                acc_buf_sel     = exec_acc_buf_sel;
                 pc_cnt_internal = 1'b1;
                 ir_ld_internal  = 1'b1;
             end
@@ -593,9 +622,9 @@ always @* begin
                 vpu_param       = exec_flags[0] ? cfg_registers[{6'b0, exec_flags}] : 16'h0000;
                 acc_rd_en       = 1'b1;
                 acc_addr        = exec_arg1;
-                acc_buf_sel     = ~acc_buf_sel_reg;  // Read from opposite bank
+                acc_buf_sel     = ~exec_acc_buf_sel;  // Read from opposite bank
                 ub_wr_en        = 1'b1;
-                ub_wr_addr      = {~ub_buf_sel_reg, exec_arg2};
+                ub_wr_addr      = {~exec_ub_buf_sel, exec_arg2};
                 ub_wr_count     = 9'h001;
                 pc_cnt_internal = 1'b1;
                 ir_ld_internal  = 1'b1;
@@ -613,9 +642,9 @@ always @* begin
                 vpu_param       = exec_flags[0] ? cfg_registers[{6'b0, exec_flags}] : 16'h0000;
                 acc_rd_en       = 1'b1;
                 acc_addr        = exec_arg1;
-                acc_buf_sel     = ~acc_buf_sel_reg;
+                acc_buf_sel     = ~exec_acc_buf_sel;
                 ub_wr_en        = 1'b1;
-                ub_wr_addr      = {~ub_buf_sel_reg, exec_arg2};
+                ub_wr_addr      = {~exec_ub_buf_sel, exec_arg2};
                 ub_wr_count     = 9'h001;
                 pc_cnt_internal = 1'b1;
                 ir_ld_internal  = 1'b1;
@@ -633,9 +662,9 @@ always @* begin
                 vpu_param       = exec_flags[0] ? cfg_registers[{6'b0, exec_flags}] : 16'h0000;
                 acc_rd_en       = 1'b1;
                 acc_addr        = exec_arg1;
-                acc_buf_sel     = ~acc_buf_sel_reg;
+                acc_buf_sel     = ~exec_acc_buf_sel;
                 ub_wr_en        = 1'b1;
-                ub_wr_addr      = {~ub_buf_sel_reg, exec_arg2};
+                ub_wr_addr      = {~exec_ub_buf_sel, exec_arg2};
                 ub_wr_count     = 9'h001;
                 pc_cnt_internal = 1'b1;
                 ir_ld_internal  = 1'b1;
@@ -653,9 +682,9 @@ always @* begin
                 vpu_param       = exec_flags[0] ? cfg_registers[{6'b0, exec_flags}] : 16'h0000;
                 acc_rd_en       = 1'b1;
                 acc_addr        = exec_arg1;
-                acc_buf_sel     = ~acc_buf_sel_reg;
+                acc_buf_sel     = ~exec_acc_buf_sel;
                 ub_wr_en        = 1'b1;
-                ub_wr_addr      = {~ub_buf_sel_reg, exec_arg2};
+                ub_wr_addr      = {~exec_ub_buf_sel, exec_arg2};
                 ub_wr_count     = 9'h001;
                 pc_cnt_internal = 1'b1;
                 ir_ld_internal  = 1'b1;
@@ -670,10 +699,10 @@ always @* begin
                 vpu_in_addr     = exec_arg1;
                 vpu_out_addr    = exec_arg2;
                 ub_rd_en        = 1'b1;
-                ub_rd_addr      = {ub_buf_sel_reg, exec_arg1};
+                ub_rd_addr      = {exec_ub_buf_sel, exec_arg1};
                 ub_rd_count     = 9'h001;
                 ub_wr_en        = 1'b1;
-                ub_wr_addr      = {~ub_buf_sel_reg, exec_arg2};
+                ub_wr_addr      = {~exec_ub_buf_sel, exec_arg2};
                 ub_wr_count     = 9'h001;
                 pc_cnt_internal = 1'b1;
                 ir_ld_internal  = 1'b1;
@@ -688,10 +717,10 @@ always @* begin
                 vpu_in_addr     = exec_arg1;
                 vpu_out_addr    = exec_arg2;
                 ub_rd_en        = 1'b1;
-                ub_rd_addr      = {ub_buf_sel_reg, exec_arg1};
+                ub_rd_addr      = {exec_ub_buf_sel, exec_arg1};
                 ub_rd_count     = 9'h001;
                 ub_wr_en        = 1'b1;
-                ub_wr_addr      = {~ub_buf_sel_reg, exec_arg2};
+                ub_wr_addr      = {~exec_ub_buf_sel, exec_arg2};
                 ub_wr_count     = 9'h001;
                 pc_cnt_internal = 1'b1;
                 ir_ld_internal  = 1'b1;
@@ -708,12 +737,12 @@ always @* begin
                 vpu_length      = exec_arg3;
                 acc_rd_en       = 1'b1;
                 acc_addr        = exec_arg1;
-                acc_buf_sel     = ~acc_buf_sel_reg;
+                acc_buf_sel     = ~exec_acc_buf_sel;
                 ub_rd_en        = 1'b1;
-                ub_rd_addr      = {ub_buf_sel_reg, exec_arg2};  // Read bias from UB
+                ub_rd_addr      = {exec_ub_buf_sel, exec_arg2};  // Read bias from UB
                 ub_rd_count     = 9'h001;
                 ub_wr_en        = 1'b1;
-                ub_wr_addr      = {~ub_buf_sel_reg, exec_arg2};
+                ub_wr_addr      = {~exec_ub_buf_sel, exec_arg2};
                 ub_wr_count     = 9'h001;
                 pc_cnt_internal = 1'b1;
                 ir_ld_internal  = 1'b1;
@@ -729,10 +758,10 @@ always @* begin
                 vpu_out_addr    = exec_arg2;
                 vpu_param       = {8'h00, exec_arg3};  // Config register base index
                 ub_rd_en        = 1'b1;
-                ub_rd_addr      = {ub_buf_sel_reg, exec_arg1};
+                ub_rd_addr      = {exec_ub_buf_sel, exec_arg1};
                 ub_rd_count     = 9'h001;
                 ub_wr_en        = 1'b1;
-                ub_wr_addr      = {~ub_buf_sel_reg, exec_arg2};
+                ub_wr_addr      = {~exec_ub_buf_sel, exec_arg2};
                 ub_wr_count     = 9'h001;
                 pc_cnt_internal = 1'b1;
                 ir_ld_internal  = 1'b1;
@@ -745,10 +774,11 @@ always @* begin
                 sync_wait       = 1'b1;
                 sync_mask       = exec_arg1[3:0];
                 sync_timeout    = {exec_arg2, exec_arg3};
-                // Toggle all buffer selectors
-                wt_buf_sel      = ~wt_buf_sel_reg;
-                acc_buf_sel     = ~acc_buf_sel_reg;
-                ub_buf_sel      = ~ub_buf_sel_reg;
+                // Toggle all buffer selectors (use pipelined state)
+                // The actual toggle happens in buffer state register update logic
+                wt_buf_sel      = ~exec_wt_buf_sel;
+                acc_buf_sel     = ~exec_acc_buf_sel;
+                ub_buf_sel      = ~exec_ub_buf_sel;
                 pc_cnt_internal = 1'b0;  // Stall PC!
                 ir_ld_internal  = 1'b1;  // Continue loading but don't execute
             end
@@ -790,9 +820,12 @@ end
 // OUTPUT ASSIGNMENTS
 // =============================================================================
 
-assign pc_cnt = pc_cnt_internal;
-assign ir_ld  = ir_ld_internal;
+// pc_cnt and ir_ld are assigned in the control signal generation always block
 assign instr_addr = pc_reg;
+
+// Output assignments
+assign pc_cnt = pc_cnt_internal;
+assign ir_ld = ir_ld_internal;
 
 // Current stage indicator for debugging
 assign current_stage = pipeline_stall ? 2'b00 :  // Stalled

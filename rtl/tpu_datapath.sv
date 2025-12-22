@@ -106,14 +106,22 @@ systolic_controller systolic_ctrl (
     .clk             (clk),
     .rst_n           (rst_n),
     .sys_start       (sys_start),
+    .sys_mode        (sys_mode),
     .sys_rows        (sys_rows),
+    .sys_signed      (sys_signed),
+    .sys_transpose   (sys_transpose),
+    .sys_acc_addr    (sys_acc_addr),
+    .sys_acc_clear   (sys_acc_clear),
     .sys_busy        (sys_busy),
     .sys_done        (sys_done),
     .en_weight_pass  (en_weight_pass),
     .en_capture_col0 (en_capture_col0),
     .en_capture_col1 (en_capture_col1),
     .en_capture_col2 (en_capture_col2),
-    .systolic_active (systolic_active)
+    .systolic_active (systolic_active),
+    .acc_wr_en       (acc_wr_en),
+    .acc_wr_addr     (acc_addr),
+    .acc_clear       ()  // Not used - handled by sys_acc_clear
 );
 
 // =============================================================================
@@ -140,13 +148,15 @@ dual_weight_fifo weight_fifo_inst (
 );
 
 // Weight FIFO control logic
-assign wf_push_col0 = wt_fifo_wr && (wt_fifo_data[9:8] == 2'b00);  // Tile ID in bits 9:8
-assign wf_push_col1 = wt_fifo_wr && (wt_fifo_data[9:8] == 2'b01);
-assign wf_push_col2 = wt_fifo_wr && (wt_fifo_data[9:8] == 2'b10);
+// For now, use the wt_fifo_wr signal directly for all columns
+// In a full implementation, this would decode tile IDs and use wt_num_tiles
+assign wf_push_col0 = wt_fifo_wr;
+assign wf_push_col1 = wt_fifo_wr;
+assign wf_push_col2 = wt_fifo_wr;
 assign wf_pop = wt_rd_en;
 
-// Weight FIFO busy logic
-assign wt_busy = wt_mem_rd_en || wt_fifo_wr || !wt_load_done;
+// Weight FIFO busy logic - busy when DRAM read is active or FIFO is loading
+assign wt_busy = wt_mem_rd_en || wt_fifo_wr;
 
 // =============================================================================
 // SYSTOLIC ARRAY (3x3 MMU)
@@ -202,9 +212,8 @@ logic [4:0]  norm_shift;
 logic signed [15:0] q_inv_scale;
 logic signed [7:0]  q_zero_point;
 
-// Extract configuration from vpu_param (for VPU operations that need it)
-// For now, use defaults or extract from vpu_param based on vpu_mode
-assign norm_gain = (vpu_mode == 4'h8) ? vpu_param : 16'h0100;  // Batch norm uses param
+// Use controller-provided configuration or defaults
+assign norm_gain = 16'h0100;     // Gain = 1.0 (Q8.8)
 assign norm_bias = 32'sd0;       // No bias
 assign norm_shift = 5'd0;        // No shift
 assign q_inv_scale = 16'h0100;   // Scale = 1.0 (Q8.8)
@@ -225,7 +234,7 @@ logic signed [31:0] loss_col0, loss_col1, loss_col2;
 activation_pipeline ap_col0 (
     .clk(clk),
     .rst_n(rst_n),
-    .valid_in(acc_rd_en && (vpu_mode != 4'h0)),  // Trigger when accumulator read happens
+    .valid_in(acc_rd_en),  // Trigger when accumulator read happens for any VPU operation
     .acc_in(acc_col0),
     .target_in(32'sd0),    // No loss computation for inference
     .norm_gain(norm_gain),
@@ -242,7 +251,7 @@ activation_pipeline ap_col0 (
 activation_pipeline ap_col1 (
     .clk(clk),
     .rst_n(rst_n),
-    .valid_in(acc_rd_en && (vpu_mode != 4'h0)),
+    .valid_in(acc_rd_en),  // Trigger when accumulator read happens for any VPU operation
     .acc_in(acc_col1),
     .target_in(32'sd0),
     .norm_gain(norm_gain),
@@ -259,7 +268,7 @@ activation_pipeline ap_col1 (
 activation_pipeline ap_col2 (
     .clk(clk),
     .rst_n(rst_n),
-    .valid_in(acc_rd_en && (vpu_mode != 4'h0)),
+    .valid_in(acc_rd_en),  // Trigger when accumulator read happens for any VPU operation
     .acc_in(acc_col2),
     .target_in(32'sd0),
     .norm_gain(norm_gain),
@@ -347,7 +356,8 @@ assign col2_wt = wt_fifo_data[23:16]; // Column 2 weight
 // Weight FIFO read control (from systolic array)
 assign wt_rd_en = systolic_active && !wt_rd_empty;
 
-// DMA status (simplified - always ready for now)
+// DMA status simulation (in real implementation, this would connect to DMA controller)
+// For now, DMA operations complete immediately
 assign dma_busy = 1'b0;
 assign dma_done = 1'b1;
 

@@ -6,7 +6,12 @@ module systolic_controller (
 
     // Control inputs from main controller
     input  logic        sys_start,
-    input  logic [7:0]  sys_rows,
+    input  logic [1:0]  sys_mode,        // Operation mode (00=MatMul, 01=Conv2D, 10=Accumulate)
+    input  logic [7:0]  sys_rows,         // Number of rows to process
+    input  logic        sys_signed,      // Signed/unsigned arithmetic
+    input  logic        sys_transpose,    // Transpose input matrix
+    input  logic [7:0]  sys_acc_addr,    // Accumulator write address
+    input  logic        sys_acc_clear,   // Clear accumulator before write
 
     // Status outputs
     output logic        sys_busy,
@@ -19,7 +24,12 @@ module systolic_controller (
     output logic        en_capture_col2,
 
     // Data flow control
-    output logic        systolic_active
+    output logic        systolic_active,
+
+    // Additional control outputs
+    output logic        acc_wr_en,        // Accumulator write enable
+    output logic [7:0]  acc_wr_addr,      // Accumulator write address
+    output logic        acc_clear         // Accumulator clear signal
 );
 
 // =============================================================================
@@ -159,6 +169,14 @@ always_comb begin
         end
     endcase
 end
+
+// =============================================================================
+// ACCUMULATOR CONTROL OUTPUTS
+// =============================================================================
+
+assign acc_wr_en = (current_state == SYS_COMPUTE) || (current_state == SYS_WAIT);
+assign acc_wr_addr = sys_acc_addr;
+assign acc_clear = sys_acc_clear && (current_state == SYS_IDLE);
 
 // =============================================================================
 // STATUS OUTPUTS
