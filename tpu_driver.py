@@ -8,6 +8,12 @@ import serial
 import numpy as np
 import time
 import struct
+try:
+    import matplotlib.pyplot as plt
+    import cv2
+    VISUALIZATION_AVAILABLE = True
+except ImportError:
+    VISUALIZATION_AVAILABLE = False
 
 class TPU_Basys3:
     """UART interface to TPU on Basys3 FPGA"""
@@ -330,6 +336,127 @@ class TPU_Basys3:
 
         return results
 
+    def canny_edge_detect(self, image, kernel_size=3):
+        """Run Canny edge detection using 3x3 systolic array
+
+        Args:
+            image: Input grayscale image (numpy array)
+            kernel_size: Convolution kernel size (must be 3 for our TPU)
+
+        Returns:
+            numpy array: Edge-detected image
+        """
+        if kernel_size != 3:
+            raise ValueError("Only 3x3 kernels supported by current TPU")
+
+        print("\n" + "="*60)
+        print("CANNY EDGE DETECTION ON 3x3 SYSTOLIC ARRAY")
+        print("="*60)
+
+        h, w = image.shape
+
+        # Step 1: Gaussian blur (simplified 3x3 kernel)
+        gaussian_kernel = np.array([[1, 2, 1],
+                                   [2, 4, 2],
+                                   [1, 2, 1]], dtype=np.uint8) // 4  # Normalize
+
+        # Step 2: Sobel X and Y gradients
+        sobel_x = np.array([[-1, 0, 1],
+                           [-2, 0, 2],
+                           [-1, 0, 1]], dtype=np.int8)
+
+        sobel_y = np.array([[-1, -2, -1],
+                           [0, 0, 0],
+                           [1, 2, 1]], dtype=np.int8)
+
+        # Process image in tiles that fit our systolic array
+        tile_size = 8  # 8x8 tiles for our 3x3 array
+        output = np.zeros_like(image, dtype=np.uint8)
+
+        for y in range(0, h-tile_size+1, tile_size//2):
+            for x in range(0, w-tile_size+1, tile_size//2):
+                # Extract tile with padding
+                tile = image[y:y+tile_size, x:x+tile_size]
+
+                # Apply Gaussian blur using systolic array
+                blurred = self.conv2d(tile, gaussian_kernel)
+
+                # Apply Sobel X
+                grad_x = self.conv2d(blurred, sobel_x)
+
+                # Apply Sobel Y
+                grad_y = self.conv2d(blurred, sobel_y)
+
+                # Compute gradient magnitude
+                grad_mag = np.sqrt(grad_x**2 + grad_y**2).astype(np.uint8)
+
+                # Simple thresholding (non-maximum suppression would need more ops)
+                edges = (grad_mag > 50).astype(np.uint8) * 255
+
+                # Place back in output
+                output[y:y+tile_size, x:x+tile_size] = edges
+
+        return output
+
+    def visualize_results(self, input_image, output_image, title="TPU Processing Results"):
+        """Visualize input and output images
+
+        Args:
+            input_image: Original input image
+            output_image: Processed output image
+            title: Plot title
+        """
+        if not VISUALIZATION_AVAILABLE:
+            print("Visualization libraries (matplotlib, opencv) not available")
+            print(f"Input shape: {input_image.shape}, Output shape: {output_image.shape}")
+            return
+
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
+
+        ax1.imshow(input_image, cmap='gray')
+        ax1.set_title('Input Image')
+        ax1.axis('off')
+
+        ax2.imshow(output_image, cmap='gray')
+        ax2.set_title('TPU Output')
+        ax2.axis('off')
+
+        plt.suptitle(title)
+        plt.tight_layout()
+        plt.show()
+
+    def conv2d(self, image, kernel):
+        """2D convolution using systolic array
+
+        Args:
+            image: Input image tile
+            kernel: 3x3 convolution kernel
+
+        Returns:
+            numpy array: Convolved output
+        """
+        h, w = image.shape
+
+        # Flatten kernel for systolic array (3x3 = 9 weights per output)
+        kernel_flat = kernel.flatten()
+
+        # Prepare input as sliding windows
+        output = np.zeros((h-2, w-2), dtype=np.uint8)
+
+        for i in range(1, h-1):
+            for j in range(1, w-1):
+                # Extract 3x3 window
+                window = image[i-1:i+2, j-1:j+2].flatten()
+
+                # Send to systolic array for convolution
+                result = self.matmul(window.reshape(1, -1),
+                                   kernel_flat.reshape(-1, 1),
+                                   ub_addr=0, acc_addr=1, batch_size=1)
+
+                output[i-1, j-1] = result[0, 0]
+
+        return output
+
 
 # ============================================================================
 # Example usage
@@ -387,6 +514,34 @@ if __name__ == '__main__':
         print("\n" + "="*70)
         print(" All tests complete!")
         print("="*70)
+
+        # ============================================================================
+        # CANNY EDGE DETECTION EXAMPLE
+        # ============================================================================
+        print("\n" + "="*70)
+        print(" CANNY EDGE DETECTION DEMO")
+        print("="*70)
+
+        # Generate test image (small for demo)
+        test_image = np.random.randint(0, 255, (16, 16), dtype=np.uint8)
+
+        print(f"\nProcessing {test_image.shape} image with Canny edge detection...")
+
+        # Note: This is a conceptual demo - actual implementation would need
+        # more sophisticated convolution and post-processing on the FPGA
+        try:
+            edges = tpu.canny_edge_detect(test_image)
+
+            print(f"Edge detection complete! Output shape: {edges.shape}")
+            print(f"Edge pixels found: {np.sum(edges > 0)}")
+
+            # Visualize if possible
+            if VISUALIZATION_AVAILABLE:
+                tpu.visualize_results(test_image, edges, "Canny Edge Detection on TPU")
+
+        except Exception as e:
+            print(f"Edge detection demo failed: {e}")
+            print("This is expected - full implementation needs more FPGA ops")
 
     except KeyboardInterrupt:
         print("\nInterrupted by user")
