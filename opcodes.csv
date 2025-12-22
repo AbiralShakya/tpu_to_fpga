@@ -1,0 +1,22 @@
+Opcode,Hex,Binary,Instruction Name,Category,ARG1,ARG2,ARG3,Flags,Description
+0,0x00,0b000000,NOP,Control,Ignored,Ignored,Ignored,Ignored,No Operation
+1,0x01,0b000001,RD_HOST_MEM,Memory,UB dest addr,Length high,Length low,Element size/Burst,Read from Host Memory (DMA)
+2,0x02,0b000010,WR_HOST_MEM,Memory,UB src addr,Length high,Length low,Element size,Write to Host Memory (DMA)
+3,0x03,0b000011,RD_WEIGHT,Memory,Start tile,Num tiles,Reserved,Buffer select,Read Weight Data from DRAM
+4,0x04,0b000100,LD_UB,Memory,UB addr,Num blocks,Reserved,Reserved,Load from Unified Buffer
+5,0x05,0b000101,ST_UB,Memory,UB addr,Num blocks,Reserved,Reserved,Store to Unified Buffer
+16,0x10,0b010000,MATMUL,Compute,UB input addr,Acc output addr,Num rows,Transpose/Signed,Matrix Multiplication
+17,0x11,0b010001,CONV2D,Compute,UB input addr,Acc output addr,Config,Padding/Signed,2D Convolution
+18,0x12,0b010010,MATMUL_ACC,Compute,UB input addr,Acc addr,Num rows,Transpose/Signed,Accumulate Matrix Multiply
+24,0x18,0b011000,RELU,Activation,Acc input addr,UB output addr,Num elements,Leak factor,Rectified Linear Unit
+25,0x19,0b011001,RELU6,Activation,Acc input addr,UB output addr,Num elements,Leak factor,ReLU6 Activation
+26,0x1A,0b011010,SIGMOID,Activation,Acc input addr,UB output addr,Num elements,Leak factor,Sigmoid Activation
+27,0x1B,0b011011,TANH,Activation,Acc input addr,UB output addr,Num elements,Leak factor,Hyperbolic Tangent
+32,0x20,0b100000,MAXPOOL,Pooling,UB input addr,UB output addr,Reserved,Window/Stride,Max Pooling
+33,0x21,0b100001,AVGPOOL,Pooling,UB input addr,UB output addr,Reserved,Window/Stride,Average Pooling
+34,0x22,0b100010,ADD_BIAS,Compute,Acc input addr,UB bias addr,Num elements,Reserved,Add Bias Vector
+35,0x23,0b100011,BATCH_NORM,Compute,UB input addr,UB output addr,Cfg base idx,Reserved,Batch Normalization
+48,0x30,0b110000,SYNC,Control,Sync mask,Timeout high,Timeout low,Reserved,Synchronize Operations
+49,0x31,0b110001,CFG_REG,Control,Reg addr,Data high,Data low,Reserved,Configure Register
+63,0x3F,0b111111,HALT,Control,Ignored,Ignored,Ignored,Ignored,Program Termination
+
