@@ -197,7 +197,7 @@ python3 << 'EOF'
 import serial
 import time
 
-port = '/dev/tty.usbserial-210292B2C3A4'  # ← Use your device name
+port = '/dev/tty.usbserial-210183A27BE01'  # ← Use your device name
 ser = serial.Serial(port, 115200, timeout=2)
 time.sleep(0.1)
 

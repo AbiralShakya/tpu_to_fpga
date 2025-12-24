@@ -9,6 +9,7 @@ read_verilog -sv rtl/unified_buffer.sv
 read_verilog -sv rtl/systolic_controller.sv
 read_verilog -sv rtl/accumulator.sv
 read_verilog -sv rtl/activation_pipeline.sv
+read_verilog -sv rtl/activation_func.sv
 read_verilog -sv rtl/dual_weight_fifo.sv
 read_verilog -sv rtl/weight_fifo.sv
 read_verilog -sv rtl/normalizer.sv
@@ -17,6 +18,7 @@ read_verilog -sv rtl/clock_manager.sv
 read_verilog -sv rtl/pe_dsp.sv
 read_verilog -sv rtl/pe.sv
 read_verilog -sv rtl/mlp_top.sv
+read_verilog -sv rtl/mmu.sv
 read_verilog -sv rtl/vpu.sv
 read_verilog -sv rtl/basys3_test_interface.sv
 read_verilog -sv rtl/uart_rx.sv
