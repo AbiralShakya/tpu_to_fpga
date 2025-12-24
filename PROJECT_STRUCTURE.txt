@@ -1,0 +1,161 @@
+TPU to FPGA - Project Structure (After Cleanup)
+================================================
+
+Root Level (6 files + .gitignore)
+├── .gitignore                     # Git ignore patterns
+├── README.md                      # Main project documentation  
+├── CLEANUP_PLAN.md               # Cleanup strategy document
+├── CLEANUP_SUMMARY.md            # Cleanup results summary
+├── xilinx_primitives.v           # Xilinx primitive definitions (required)
+├── opcodes.csv                   # Opcode reference table
+└── controlsignaltable.txt        # Control signal documentation
+
+Organized Directories (11 total)
+================================
+
+📁 archive/                        # Archived/obsolete files
+   ├── minimal_controller*.v       # Old controller versions (4 files)
+   ├── test_*.v                    # Old test files
+   ├── simple_test.v/vcd          # Old test artifacts
+   ├── openXC7-TetriSaraj/        # External project
+   └── tpu_to_fpga_old/           # Old duplicate directory
+
+📁 assets/                         # Project assets
+   ├── TPU_Datapath_Diagram.svg   # Architecture diagram
+   └── noyceimg.png.jpg           # Project image
+
+📁 build/                          # Build outputs (gitignored)
+   ├── simple_test.json           # Yosys synthesis (9.2 MB)
+   ├── simple_test_routed.json    # nextpnr output (796 KB)
+   ├── simple_test.fasm           # FASM netlist (175 KB)
+   ├── simple_test.frames         # Frame data (5.3 MB)
+   ├── simple_test.bit            # Final bitstream (2.1 MB) ✨
+   ├── xc7a35t_basys3.bba         # Chipdb text format
+   └── *.log                      # Build logs
+
+📁 constraints/                    # FPGA constraint files
+   ├── basys3.xdc                 # Full TPU constraints
+   └── simple_test.xdc            # Test design constraints
+
+📁 docs/                           # Documentation
+   ├── IMPLEMENTATION_SUMMARY.md  # Architecture overview
+   ├── ISA_Reference.md           # Instruction set
+   ├── OPCODE_REFERENCE.md        # Opcode details
+   ├── guides/                    # User guides
+   │   ├── FPGA_PROGRAMMING_GUIDE.md
+   │   ├── UART_SETUP_GUIDE.md
+   │   ├── COMPREHENSIVE_TESTING_GUIDE.md
+   │   ├── FPGA_FLOW_DIAGRAM.md
+   │   ├── COPROCESSOR_DRIVER_README.md
+   │   ├── README_UART_STREAMING.md
+   │   ├── README_new.md
+   │   └── vivado/               # Vivado-specific guides
+   │       ├── ADROIT_QUICK_START.md
+   │       ├── ADROIT_VIVADO_STEPS.md
+   │       ├── VISUAL_VIVADO_ADROIT_GUIDE.md
+   │       ├── VIVADO_OPT_DESIGN_FIX.md
+   │       ├── FIND_VIVADO_ON_ADROIT.md
+   │       └── EXTRACT_AND_USE_VIVADO_PACKAGE.md
+   └── archived/                  # Archived documentation
+       ├── DOCKER_BUILD_GUIDE.md
+       ├── F4PGA_GUIDE.md
+       └── OPEN_SOURCE_FPGA_SETUP.md
+
+📁 python/                         # Python scripts
+   ├── drivers/                   # UART communication
+   │   ├── tpu_coprocessor_driver.py
+   │   └── tpu_driver.py
+   ├── instruction_encoder.py     # Instruction encoding
+   ├── test_all_instructions.py   # Hardware tests
+   ├── test_isa_fpga.py          # ISA tests
+   ├── demo_tpu_complete.py      # Demo application
+   └── example_coprocessor_usage.py
+
+📁 rtl/                            # RTL source files (27 files)
+   ├── tpu_top.sv                # Top-level module
+   ├── tpu_controller.sv         # Instruction decoder
+   ├── tpu_datapath.sv           # Main datapath
+   ├── systolic_controller.sv    # Systolic array control
+   ├── unified_buffer.sv         # Memory subsystem
+   ├── pe_dsp.sv                 # Processing element
+   ├── accumulator.sv            # Accumulator
+   ├── activation_*.sv           # Activation functions
+   ├── uart_*.sv                 # UART modules
+   ├── basys3_test_interface.sv  # Test interface
+   └── ... (27 files total)
+
+📁 scripts/                        # Build scripts
+   ├── build_tpu_bitstream.sh    # Bitstream build
+   ├── check_vivado.sh           # Vivado checker
+   ├── complete_workflow.sh      # Full workflow
+   ├── setup_env.sh              # Environment setup
+   ├── upload_to_adroit.sh       # Upload to cluster
+   ├── test_all.sh               # Run all tests
+   └── test_full_tpu.sh          # Full TPU test
+
+📁 sim/                            # Simulation files
+   ├── Makefile                  # Simulation makefile
+   ├── sim_main.cpp              # Verilator testbench
+   ├── test_*.v                  # Verilog testbenches
+   ├── tests/                    # Cocotb Python tests
+   │   ├── test_accumulator.py
+   │   ├── test_activation_*.py
+   │   ├── test_tpu_controller_isa.py
+   │   └── ... (13 test files)
+   ├── obj_dir/                  # Verilator build
+   └── sim_build/                # Cocotb build
+
+📁 synthesis/                      # Synthesis tools
+   ├── yosys/                    # Yosys scripts
+   │   ├── synth_basys3.ys      # Full TPU synthesis
+   │   ├── synth_simple_test.ys  # Test synthesis
+   │   └── synth_simple.ys       # Simple synthesis
+   └── nextpnr/                  # nextpnr-xilinx
+       └── xc7a35t.bin          # Artix-7 chipdb (88 MB)
+
+📁 vivado/                         # Vivado files (optional)
+   ├── bitstream_package/        # EDIF bitstream package
+   │   ├── tpu.edif
+   │   ├── tpu_constraints.xdc
+   │   ├── import_edif.tcl
+   │   └── README.md
+   ├── bitstream_package.tar.gz  # Compressed package
+   ├── create_vivado_project.tcl # Project creation
+   ├── extract_vivado_package.sh # Package extraction
+   ├── docker_build.sh           # Docker build
+   └── symbiflow_install.sh      # Symbiflow installer
+
+Summary Statistics
+==================
+Root files:        69 → 7 files (90% reduction!)
+Directories:       10 → 11 (organized)
+Documentation:     15+ files → Organized in docs/
+Python scripts:    5 files → Organized in python/
+Shell scripts:     7 files → Organized in scripts/
+Synthesis files:   3 files → Organized in synthesis/
+Constraints:       2 files → Organized in constraints/
+
+Build Artifacts Cleaned
+========================
+✓ Deleted: *.vvp, test binaries, obj_dir/, __pycache__/
+✓ Archived: Old test files, minimal_controller*.v
+✓ Organized: All remaining files into logical directories
+
+Key Achievements
+================
+✅ Professional project structure
+✅ Clear separation of concerns
+✅ Easy navigation and discovery
+✅ Git-friendly organization
+✅ Comprehensive documentation
+✅ Ready for collaboration
+✅ Maintainable codebase
+
+Next Steps
+==========
+1. Review archive/ directory - delete if truly obsolete
+2. Update script paths if needed
+3. Add LICENSE file
+4. Git commit the cleaned structure
+5. Optional: Delete CLEANUP_*.md files after review
+

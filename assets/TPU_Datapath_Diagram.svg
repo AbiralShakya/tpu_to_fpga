@@ -1,0 +1,461 @@
+<svg width="14000" height="10000" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrowblack" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="black" />
+    </marker>
+    <marker id="arrowblue" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="blue" />
+    </marker>
+    <marker id="arrowred" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="red" />
+    </marker>
+    <marker id="arrowgreen" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="green" />
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="14000" height="10000" fill="#f5f5f5"/>
+
+  <!-- Title -->
+  <text x="7000" y="50" font-size="48" font-weight="bold" text-anchor="middle" fill="#000">TPU v1 Controller &amp; Datapath Architecture</text>
+  <text x="7000" y="100" font-size="24" text-anchor="middle" fill="#666">2-Stage Pipeline with 3×3 Systolic Array</text>
+
+  <!-- Controller Boundary -->
+  <rect x="100" y="200" width="6800" height="3200" fill="none" stroke="purple" stroke-width="8" stroke-dasharray="20,10"/>
+  <text x="100" y="190" font-size="32" font-weight="bold" fill="purple">CONTROLLER (2-STAGE PIPELINE)</text>
+
+  <!-- Datapath Boundary -->
+  <rect x="100" y="3600" width="13500" height="6200" fill="none" stroke="green" stroke-width="8"/>
+  <text x="100" y="3590" font-size="32" font-weight="bold" fill="green">DATAPATH</text>
+
+  <!-- ============================================ -->
+  <!-- STAGE 1: FETCH + DECODE -->
+  <!-- ============================================ -->
+  
+  <rect x="200" y="300" width="3200" height="1400" fill="#E8EAF6" stroke="#3F51B5" stroke-width="4" rx="10"/>
+  <text x="1800" y="350" font-size="28" font-weight="bold" text-anchor="middle" fill="#1A237E">STAGE 1: FETCH + DECODE</text>
+
+  <!-- Program Counter -->
+  <rect x="300" y="450" width="300" height="200" fill="#FFF9C4" stroke="#F57F17" stroke-width="3" rx="5"/>
+  <text x="450" y="500" font-size="20" font-weight="bold" text-anchor="middle">16-bit PC</text>
+  <text x="450" y="530" font-size="16" text-anchor="middle">Program Counter</text>
+  <text x="450" y="560" font-size="14" text-anchor="middle">[7:0]</text>
+  <text x="320" y="480" font-size="12" fill="orange">← pc_cnt</text>
+  <text x="320" y="510" font-size="12" fill="orange">← pc_ld</text>
+  <text x="320" y="540" font-size="12" fill="orange">← rst_n</text>
+  <line x1="600" y1="550" x2="800" y2="550" stroke="black" stroke-width="3" marker-end="url(#arrowblack)"/>
+  <text x="700" y="540" font-size="14">pc[7:0]</text>
+
+  <!-- Instruction Buffer -->
+  <rect x="850" y="450" width="400" height="200" fill="#C8E6C9" stroke="#2E7D32" stroke-width="3" rx="5"/>
+  <text x="1050" y="500" font-size="20" font-weight="bold" text-anchor="middle">Instr Buffer</text>
+  <text x="1050" y="530" font-size="16" text-anchor="middle">32×32-bit</text>
+  <text x="1050" y="560" font-size="14" text-anchor="middle">BRAM</text>
+  <text x="870" y="480" font-size="12" fill="orange">← clk</text>
+  <text x="870" y="510" font-size="12" fill="orange">← rst_n</text>
+  <line x1="1250" y1="550" x2="1450" y2="550" stroke="black" stroke-width="3" marker-end="url(#arrowblack)"/>
+  <text x="1350" y="540" font-size="14">instr[31:0]</text>
+
+  <!-- Instruction Register -->
+  <rect x="1500" y="450" width="300" height="200" fill="#FFF9C4" stroke="#F57F17" stroke-width="3" rx="5"/>
+  <text x="1650" y="500" font-size="20" font-weight="bold" text-anchor="middle">32-bit IR</text>
+  <text x="1650" y="530" font-size="16" text-anchor="middle">Instruction Reg</text>
+  <text x="1520" y="480" font-size="12" fill="orange">← ir_ld</text>
+  <text x="1520" y="510" font-size="12" fill="orange">← clk</text>
+  <line x1="1800" y1="550" x2="2000" y2="550" stroke="black" stroke-width="3" marker-end="url(#arrowblack)"/>
+  <text x="1900" y="540" font-size="14">ir_out[31:0]</text>
+
+  <!-- Decoder -->
+  <rect x="300" y="750" width="1600" height="900" fill="#E1BEE7" stroke="#7B1FA2" stroke-width="3" rx="5"/>
+  <text x="1100" y="800" font-size="24" font-weight="bold" text-anchor="middle">INSTRUCTION DECODER</text>
+  <text x="1100" y="840" font-size="18" text-anchor="middle" fill="#4A148C">(Combinational Logic)</text>
+  
+  <!-- Decoder Input -->
+  <line x1="1650" y1="650" x2="1650" y2="750" stroke="black" stroke-width="3"/>
+  <text x="1600" y="700" font-size="14">ir_out[31:0]</text>
+
+  <!-- Decoder Fields -->
+  <rect x="350" y="900" width="1400" height="700" fill="white" stroke="gray" stroke-width="2" rx="5"/>
+  <text x="1050" y="940" font-size="20" font-weight="bold" text-anchor="middle">Field Extraction</text>
+  <text x="400" y="980" font-size="16">opcode[5:0] = ir[31:26]</text>
+  <text x="400" y="1010" font-size="16">arg1[7:0] = ir[25:18]</text>
+  <text x="400" y="1040" font-size="16">arg2[7:0] = ir[17:10]</text>
+  <text x="400" y="1070" font-size="16">arg3[7:0] = ir[9:2]</text>
+  <text x="400" y="1100" font-size="16">flags[1:0] = ir[1:0]</text>
+
+  <text x="1050" y="1150" font-size="20" font-weight="bold" text-anchor="middle">Decoded Outputs</text>
+  <text x="400" y="1190" font-size="14">opcode → 44 control signals</text>
+  <text x="400" y="1220" font-size="14">arg1, arg2, arg3 → addresses/counts</text>
+  <text x="400" y="1250" font-size="14">flags → mode selection</text>
+
+  <!-- Hazard Detection -->
+  <rect x="2000" y="750" width="1200" height="400" fill="#FFCDD2" stroke="#C62828" stroke-width="3" rx="5"/>
+  <text x="2600" y="800" font-size="22" font-weight="bold" text-anchor="middle">HAZARD DETECTION</text>
+  <text x="2100" y="850" font-size="16">stall = sys_busy | vpu_busy | dma_busy</text>
+  <text x="2100" y="890" font-size="16">if_id_stall = stall</text>
+  <text x="2100" y="930" font-size="16">pc_cnt = !stall</text>
+  <text x="2100" y="970" font-size="16">ir_ld = !stall</text>
+  <text x="2100" y="1010" font-size="16">Status inputs from datapath:</text>
+  <text x="2100" y="1050" font-size="14">← sys_busy, vpu_busy, dma_busy</text>
+
+  <!-- IF/ID Pipeline Register -->
+  <rect x="3600" y="300" width="500" height="1400" fill="#BBDEFB" stroke="#1976D2" stroke-width="5" rx="10"/>
+  <text x="3850" y="350" font-size="28" font-weight="bold" text-anchor="middle" fill="#0D47A1">IF/ID</text>
+  <text x="3850" y="390" font-size="24" font-weight="bold" text-anchor="middle" fill="#0D47A1">PIPELINE</text>
+  <text x="3850" y="430" font-size="24" font-weight="bold" text-anchor="middle" fill="#0D47A1">REGISTER</text>
+  <text x="3850" y="470" font-size="18" text-anchor="middle" fill="#0D47A1">(45 bits)</text>
+
+  <rect x="3700" y="550" width="300" height="1000" fill="white" stroke="gray" stroke-width="2" rx="5"/>
+  <text x="3850" y="600" font-size="18" font-weight="bold" text-anchor="middle">Stored Fields</text>
+  <text x="3750" y="640" font-size="14">valid [1]</text>
+  <text x="3750" y="670" font-size="14">pc [8]</text>
+  <text x="3750" y="700" font-size="14">opcode [6]</text>
+  <text x="3750" y="730" font-size="14">arg1 [8]</text>
+  <text x="3750" y="760" font-size="14">arg2 [8]</text>
+  <text x="3750" y="790" font-size="14">arg3 [8]</text>
+  <text x="3750" y="820" font-size="14">flags [2]</text>
+  <text x="3750" y="850" font-size="14">unit_sel [4]</text>
+  <text x="3750" y="900" font-size="16" font-weight="bold">Control:</text>
+  <text x="3750" y="930" font-size="14" fill="orange">← clk</text>
+  <text x="3750" y="960" font-size="14" fill="orange">← stall</text>
+  <text x="3750" y="990" font-size="14" fill="orange">← flush</text>
+
+  <!-- Stage 2: Execute -->
+  <rect x="4300" y="300" width="2400" height="1400" fill="#C5E1A5" stroke="#558B2F" stroke-width="4" rx="10"/>
+  <text x="5500" y="350" font-size="28" font-weight="bold" text-anchor="middle" fill="#1B5E20">STAGE 2: EXECUTE</text>
+
+  <!-- Control Signal Generation -->
+  <rect x="4400" y="450" width="2200" height="1200" fill="#FFF9C4" stroke="#F57F17" stroke-width="3" rx="5"/>
+  <text x="5500" y="500" font-size="24" font-weight="bold" text-anchor="middle">CONTROL SIGNAL GENERATION</text>
+
+  <rect x="4500" y="600" width="2000" height="1000" fill="white" stroke="gray" stroke-width="2" rx="5"/>
+  <text x="5500" y="650" font-size="20" font-weight="bold" text-anchor="middle">44 Control Signals</text>
+  
+  <text x="4600" y="700" font-size="16" font-weight="bold">From IF/ID Register:</text>
+  <text x="4700" y="730" font-size="14">if_id_opcode[5:0]</text>
+  <text x="4700" y="760" font-size="14">if_id_arg1[7:0], arg2[7:0], arg3[7:0]</text>
+  <text x="4700" y="790" font-size="14">if_id_flags[1:0]</text>
+
+  <text x="4600" y="850" font-size="16" font-weight="bold">Control Signal Groups:</text>
+  <text x="4700" y="880" font-size="14">• PC Control (1): pc_cnt</text>
+  <text x="4700" y="910" font-size="14">• Unified Buffer (6): rd_en, wr_en, addr, count</text>
+  <text x="4700" y="940" font-size="14">• DMA (5): start, dir, addr, length, elem_sz</text>
+  <text x="4700" y="970" font-size="14">• Weight FIFO (4): mem_rd_en, addr, fifo_wr, buf_sel</text>
+  <text x="4700" y="1000" font-size="14">• Systolic Array (7): start, mode, rows, signed, transpose, acc_addr</text>
+  <text x="4700" y="1030" font-size="14">• Accumulator (4): wr_en, rd_en, addr, buf_sel</text>
+  <text x="4700" y="1060" font-size="14">• VPU (6): start, mode, in_addr, out_addr, length, param</text>
+  <text x="4700" y="1090" font-size="14">• Sync (3): wait, mask, timeout</text>
+  <text x="4700" y="1120" font-size="14">• Config (3): wr_en, addr, data</text>
+
+  <text x="5500" y="1200" font-size="18" font-weight="bold" text-anchor="middle" fill="blue">↓ 44 Control Signals to Datapath</text>
+
+  <!-- ============================================ -->
+  <!-- DATAPATH COMPONENTS -->
+  <!-- ============================================ -->
+
+  <!-- UART DMA Controller -->
+  <rect x="300" y="3800" width="1200" height="800" fill="#E1F5FE" stroke="#0277BD" stroke-width="4" rx="10"/>
+  <text x="900" y="3900" font-size="24" font-weight="bold" text-anchor="middle">UART DMA CONTROLLER</text>
+  <text x="900" y="3940" font-size="18" text-anchor="middle">115200 baud</text>
+  
+  <rect x="400" y="4000" width="1000" height="500" fill="white" stroke="gray" stroke-width="2" rx="5"/>
+  <text x="900" y="4040" font-size="16" font-weight="bold" text-anchor="middle">Commands</text>
+  <text x="450" y="4080" font-size="14">0x01: Write UB</text>
+  <text x="450" y="4110" font-size="14">0x02: Write Weights</text>
+  <text x="450" y="4140" font-size="14">0x03: Write Instructions</text>
+  <text x="450" y="4170" font-size="14">0x04: Read UB</text>
+  <text x="450" y="4200" font-size="14">0x05: Start Execution</text>
+  <text x="450" y="4230" font-size="14">0x06: Read Status</text>
+  
+  <text x="900" y="4300" font-size="16" font-weight="bold" text-anchor="middle">I/O</text>
+  <text x="450" y="4340" font-size="14" fill="orange">← uart_rx</text>
+  <text x="450" y="4370" font-size="14" fill="orange">→ uart_tx</text>
+  <text x="450" y="4400" font-size="14">→ ub_wr_en, ub_wr_addr[7:0], ub_wr_data[255:0]</text>
+  <text x="450" y="4430" font-size="14">→ wt_wr_en, wt_wr_addr[9:0], wt_wr_data[63:0]</text>
+  <text x="450" y="4460" font-size="14">→ instr_wr_en, instr_wr_addr[4:0], instr_wr_data[31:0]</text>
+
+  <!-- Unified Buffer -->
+  <rect x="1700" y="3800" width="1400" height="1200" fill="#C8E6C9" stroke="#2E7D32" stroke-width="4" rx="10"/>
+  <text x="2400" y="3900" font-size="24" font-weight="bold" text-anchor="middle">UNIFIED BUFFER</text>
+  <text x="2400" y="3940" font-size="18" text-anchor="middle">64 KiB Dual-Port SRAM</text>
+  
+  <rect x="1800" y="4000" width="1200" height="900" fill="white" stroke="gray" stroke-width="2" rx="5"/>
+  <text x="2400" y="4040" font-size="18" font-weight="bold" text-anchor="middle">Port A (Read)</text>
+  <text x="1900" y="4080" font-size="14" fill="orange">← port_a_rd_en</text>
+  <text x="1900" y="4110" font-size="14" fill="orange">← port_a_addr[7:0]</text>
+  <text x="1900" y="4140" font-size="14" fill="orange">← port_a_count[7:0]</text>
+  <text x="1900" y="4170" font-size="14">→ port_a_data[255:0]</text>
+  
+  <text x="2400" y="4220" font-size="18" font-weight="bold" text-anchor="middle">Port B (Write)</text>
+  <text x="1900" y="4260" font-size="14" fill="orange">← port_b_wr_en</text>
+  <text x="1900" y="4290" font-size="14" fill="orange">← port_b_addr[7:0]</text>
+  <text x="1900" y="4320" font-size="14" fill="orange">← port_b_data[255:0]</text>
+  <text x="1900" y="4350" font-size="14">→ port_b_ready</text>
+  
+  <text x="2400" y="4400" font-size="16" font-weight="bold" text-anchor="middle">Status</text>
+  <text x="1900" y="4430" font-size="14">→ ub_busy, ub_done</text>
+  <text x="1900" y="4460" font-size="14" fill="orange">← clk, rst_n</text>
+
+  <!-- Weight FIFO (Double-Buffered) -->
+  <rect x="3300" y="3800" width="1600" height="1200" fill="#FFE0B2" stroke="#E65100" stroke-width="4" rx="10"/>
+  <text x="4100" y="3900" font-size="24" font-weight="bold" text-anchor="middle">WEIGHT FIFO</text>
+  <text x="4100" y="3940" font-size="18" text-anchor="middle">64 KiB × 2 (Double-Buffered)</text>
+  
+  <rect x="3400" y="4000" width="1400" height="900" fill="white" stroke="gray" stroke-width="2" rx="5"/>
+  <rect x="3500" y="4050" width="500" height="200" fill="#FFCDD2" stroke="#C62828" stroke-width="3" rx="5"/>
+  <text x="3750" y="4100" font-size="16" font-weight="bold" text-anchor="middle">BUFFER 0</text>
+  <text x="3750" y="4130" text-anchor="middle">64 KiB</text>
+  <text x="3750" y="4160" text-anchor="middle">Loading weights</text>
+  
+  <rect x="4200" y="4050" width="500" height="200" fill="#C8E6C9" stroke="#2E7D32" stroke-width="3" rx="5"/>
+  <text x="4450" y="4100" font-size="16" font-weight="bold" text-anchor="middle">BUFFER 1</text>
+  <text x="4450" y="4130" text-anchor="middle">64 KiB</text>
+  <text x="4450" y="4160" text-anchor="middle">Feeding systolic</text>
+  
+  <text x="4100" y="4320" font-size="16" font-weight="bold" text-anchor="middle">Control</text>
+  <text x="3500" y="4360" font-size="14" fill="orange">← wt_fifo_wr</text>
+  <text x="3500" y="4390" font-size="14" fill="orange">← wt_buf_sel</text>
+  <text x="3500" y="4420" font-size="14" fill="orange">← wt_num_tiles[7:0]</text>
+  <text x="3500" y="4450" font-size="14">→ wt_fifo_full</text>
+  <text x="3500" y="4480" font-size="14">→ wt_load_done</text>
+  <text x="3500" y="4510" font-size="14">→ wt_data[15:0]</text>
+
+  <!-- Systolic Array (2×2 MMU) -->
+  <rect x="5100" y="3800" width="2000" height="2000" fill="#F8BBD0" stroke="#880E4F" stroke-width="4" rx="10"/>
+  <text x="6100" y="3900" font-size="28" font-weight="bold" text-anchor="middle">SYSTOLIC ARRAY</text>
+  <text x="6100" y="3940" font-size="22" text-anchor="middle">3×3 Processing Elements</text>
+  
+  <!-- PE Grid -->
+  <rect x="5300" y="4100" width="300" height="300" fill="#FFF9C4" stroke="#F57F17" stroke-width="3" rx="5"/>
+  <text x="5450" y="4180" font-size="18" font-weight="bold" text-anchor="middle">PE[0][0]</text>
+  <text x="5450" y="4210" font-size="14" text-anchor="middle">MAC Unit</text>
+  <text x="5450" y="4240" font-size="14" text-anchor="middle">8×8 → 32</text>
+  <text x="5300" y="4280" font-size="12" fill="orange">← act_in[7:0]</text>
+  <text x="5300" y="4310" font-size="12" fill="orange">← weight[7:0]</text>
+  <text x="5300" y="4340" font-size="12" fill="orange">← psum_in[31:0]</text>
+  <text x="5300" y="4370" font-size="12">→ act_out[7:0]</text>
+  <text x="5300" y="4400" font-size="12">→ psum_out[31:0]</text>
+
+  <rect x="5800" y="4100" width="300" height="300" fill="#FFF9C4" stroke="#F57F17" stroke-width="3" rx="5"/>
+  <text x="5950" y="4180" font-size="18" font-weight="bold" text-anchor="middle">PE[0][1]</text>
+  <text x="5950" y="4210" font-size="14" text-anchor="middle">MAC Unit</text>
+  <text x="5950" y="4240" font-size="14" text-anchor="middle">8×8 → 32</text>
+
+  <rect x="5300" y="4600" width="300" height="300" fill="#FFF9C4" stroke="#F57F17" stroke-width="3" rx="5"/>
+  <text x="5450" y="4680" font-size="18" font-weight="bold" text-anchor="middle">PE[1][0]</text>
+  <text x="5450" y="4710" font-size="14" text-anchor="middle">MAC Unit</text>
+  <text x="5450" y="4740" font-size="14" text-anchor="middle">8×8 → 32</text>
+
+  <rect x="5800" y="4600" width="300" height="300" fill="#FFF9C4" stroke="#F57F17" stroke-width="3" rx="5"/>
+  <text x="5950" y="4680" font-size="18" font-weight="bold" text-anchor="middle">PE[1][1]</text>
+  <text x="5950" y="4710" font-size="14" text-anchor="middle">MAC Unit</text>
+  <text x="5950" y="4740" font-size="14" text-anchor="middle">8×8 → 32</text>
+
+  <!-- Data Flow Arrows -->
+  <line x1="5600" y1="4250" x2="5800" y2="4250" stroke="green" stroke-width="4" marker-end="url(#arrowgreen)"/>
+  <text x="5700" y="4230" font-size="12" fill="green">A →</text>
+  
+  <line x1="5450" y1="4400" x2="5450" y2="4600" stroke="blue" stroke-width="4" marker-end="url(#arrowblue)"/>
+  <text x="5470" y="4500" font-size="12" fill="blue">PS ↓</text>
+
+  <!-- Systolic Controller -->
+  <rect x="5300" y="5100" width="800" height="600" fill="#E1BEE7" stroke="#7B1FA2" stroke-width="3" rx="5"/>
+  <text x="5700" y="5160" font-size="20" font-weight="bold" text-anchor="middle">Systolic Controller</text>
+  <text x="5400" y="5220" font-size="14" fill="orange">← sys_start</text>
+  <text x="5400" y="5250" font-size="14" fill="orange">← sys_rows[7:0]</text>
+  <text x="5400" y="5280" font-size="14">→ sys_busy</text>
+  <text x="5400" y="5310" font-size="14">→ sys_done</text>
+  <text x="5400" y="5340" font-size="14">→ en_weight_pass</text>
+  <text x="5400" y="5370" font-size="14">→ en_capture_col0</text>
+  <text x="5400" y="5400" font-size="14">→ en_capture_col1</text>
+  <text x="5400" y="5430" font-size="14">→ systolic_active</text>
+
+  <!-- Accumulators (Double-Buffered) -->
+  <rect x="7300" y="3800" width="1600" height="1200" fill="#FFE0B2" stroke="#E65100" stroke-width="4" rx="10"/>
+  <text x="8100" y="3900" font-size="24" font-weight="bold" text-anchor="middle">ACCUMULATORS</text>
+  <text x="8100" y="3940" font-size="18" text-anchor="middle">32 KiB × 2 (Double-Buffered)</text>
+  
+  <rect x="7400" y="4000" width="1400" height="900" fill="white" stroke="gray" stroke-width="2" rx="5"/>
+  <rect x="7500" y="4050" width="500" height="200" fill="#FFCDD2" stroke="#C62828" stroke-width="3" rx="5"/>
+  <text x="7750" y="4100" font-size="16" font-weight="bold" text-anchor="middle">BUFFER 0</text>
+  <text x="7750" y="4130" text-anchor="middle">32 KiB</text>
+  <text x="7750" y="4160" text-anchor="middle">Systolic writes</text>
+  
+  <rect x="8200" y="4050" width="500" height="200" fill="#C8E6C9" stroke="#2E7D32" stroke-width="3" rx="5"/>
+  <text x="8450" y="4100" font-size="16" font-weight="bold" text-anchor="middle">BUFFER 1</text>
+  <text x="8450" y="4130" text-anchor="middle">32 KiB</text>
+  <text x="8450" y="4160" text-anchor="middle">VPU reads</text>
+  
+  <text x="8100" y="4320" font-size="16" font-weight="bold" text-anchor="middle">Control</text>
+  <text x="7500" y="4360" font-size="14" fill="orange">← acc_wr_en</text>
+  <text x="7500" y="4390" font-size="14" fill="orange">← acc_rd_en</text>
+  <text x="7500" y="4420" font-size="14" fill="orange">← acc_addr[7:0]</text>
+  <text x="7500" y="4450" font-size="14" fill="orange">← acc_buf_sel</text>
+  <text x="7500" y="4480" font-size="14">→ acc_data[63:0]</text>
+
+  <!-- VPU -->
+  <rect x="9100" y="3800" width="1800" height="2000" fill="#BBDEFB" stroke="#1976D2" stroke-width="4" rx="10"/>
+  <text x="10000" y="3900" font-size="24" font-weight="bold" text-anchor="middle">VECTOR PROCESSING UNIT</text>
+  <text x="10000" y="3940" font-size="18" text-anchor="middle">(VPU)</text>
+  
+  <rect x="9200" y="4000" width="1600" height="1600" fill="white" stroke="gray" stroke-width="2" rx="5"/>
+  <text x="10000" y="4050" font-size="18" font-weight="bold" text-anchor="middle">Functions</text>
+  
+  <rect x="9300" y="4100" width="300" height="150" fill="#FFF9C4" stroke="#F57F17" stroke-width="2" rx="5"/>
+  <text x="9450" y="4160" font-size="16" font-weight="bold" text-anchor="middle">ReLU</text>
+  <text x="9450" y="4190" font-size="14" text-anchor="middle">max(0, x)</text>
+  
+  <rect x="9700" y="4100" width="300" height="150" fill="#FFF9C4" stroke="#F57F17" stroke-width="2" rx="5"/>
+  <text x="9850" y="4160" font-size="16" font-weight="bold" text-anchor="middle">ReLU6</text>
+  <text x="9850" y="4190" font-size="14" text-anchor="middle">min(max(0,x),6)</text>
+  
+  <rect x="10100" y="4100" width="300" height="150" fill="#FFF9C4" stroke="#F57F17" stroke-width="2" rx="5"/>
+  <text x="10250" y="4160" font-size="16" font-weight="bold" text-anchor="middle">Sigmoid</text>
+  <text x="10250" y="4190" font-size="14" text-anchor="middle">1/(1+e^(-x))</text>
+  
+  <rect x="10500" y="4100" width="300" height="150" fill="#FFF9C4" stroke="#F57F17" stroke-width="2" rx="5"/>
+  <text x="10650" y="4160" font-size="16" font-weight="bold" text-anchor="middle">Tanh</text>
+  <text x="10650" y="4190" font-size="14" text-anchor="middle">tanh(x)</text>
+  
+  <rect x="9300" y="4300" width="300" height="150" fill="#FFF9C4" stroke="#F57F17" stroke-width="2" rx="5"/>
+  <text x="9450" y="4360" font-size="16" font-weight="bold" text-anchor="middle">MaxPool</text>
+  <text x="9450" y="4390" font-size="14" text-anchor="middle">max(window)</text>
+  
+  <rect x="9700" y="4300" width="300" height="150" fill="#FFF9C4" stroke="#F57F17" stroke-width="2" rx="5"/>
+  <text x="9850" y="4360" font-size="16" font-weight="bold" text-anchor="middle">AvgPool</text>
+  <text x="9850" y="4390" font-size="14" text-anchor="middle">avg(window)</text>
+  
+  <rect x="10100" y="4300" width="300" height="150" fill="#FFF9C4" stroke="#F57F17" stroke-width="2" rx="5"/>
+  <text x="10250" y="4360" font-size="16" font-weight="bold" text-anchor="middle">BatchNorm</text>
+  <text x="10250" y="4390" font-size="14" text-anchor="middle">normalize</text>
+  
+  <text x="10000" y="4550" font-size="16" font-weight="bold" text-anchor="middle">Control</text>
+  <text x="9300" y="4590" font-size="14" fill="orange">← vpu_start</text>
+  <text x="9300" y="4620" font-size="14" fill="orange">← vpu_mode[3:0]</text>
+  <text x="9300" y="4650" font-size="14" fill="orange">← vpu_in_addr[7:0]</text>
+  <text x="9300" y="4680" font-size="14" fill="orange">← vpu_out_addr[7:0]</text>
+  <text x="9300" y="4710" font-size="14" fill="orange">← vpu_length[7:0]</text>
+  <text x="9300" y="4740" font-size="14" fill="orange">← vpu_param[15:0]</text>
+  <text x="9300" y="4770" font-size="14">→ vpu_busy</text>
+  <text x="9300" y="4800" font-size="14">→ vpu_done</text>
+  <text x="9300" y="4830" font-size="14">→ vpu_out[255:0]</text>
+
+  <!-- Data Path Connections -->
+  <!-- UB to Systolic -->
+  <line x1="3100" y1="4400" x2="5100" y2="4400" stroke="black" stroke-width="4" marker-end="url(#arrowblack)"/>
+  <text x="4100" y="4380" font-size="16" fill="black">activations[255:0]</text>
+  
+  <!-- Weight FIFO to Systolic -->
+  <line x1="4900" y1="4400" x2="5100" y2="4200" stroke="purple" stroke-width="4" marker-end="url(#arrowblack)"/>
+  <text x="4950" y="4280" font-size="16" fill="purple">weights[15:0]</text>
+  
+  <!-- Systolic to Accumulators -->
+  <line x1="7100" y1="4800" x2="7300" y2="4800" stroke="red" stroke-width="4" marker-end="url(#arrowred)"/>
+  <text x="7200" y="4780" font-size="16" fill="red">partial_sums[63:0]</text>
+  
+  <!-- Accumulators to VPU -->
+  <line x1="8900" y1="4400" x2="9100" y2="4400" stroke="blue" stroke-width="4" marker-end="url(#arrowblue)"/>
+  <text x="9000" y="4380" font-size="16" fill="blue">acc_data[63:0]</text>
+  
+  <!-- VPU to UB -->
+  <line x1="10000" y1="5800" x2="2400" y2="5000" stroke="green" stroke-width="4" marker-end="url(#arrowgreen)"/>
+  <text x="6200" y="5400" font-size="16" fill="green">vpu_out[255:0]</text>
+
+  <!-- Control Signal Paths -->
+  <!-- Controller to Datapath -->
+  <line x1="5500" y1="1700" x2="5500" y2="3800" stroke="orange" stroke-width="6" stroke-dasharray="10,5"/>
+  <text x="5600" y="2750" font-size="20" fill="orange" transform="rotate(90 5600 2750)">44 Control Signals</text>
+
+  <!-- Status Signals Back -->
+  <line x1="6100" y1="3800" x2="5500" y2="1700" stroke="red" stroke-width="4" stroke-dasharray="5,5"/>
+  <text x="5800" y="2750" font-size="16" fill="red" transform="rotate(-90 5800 2750)">sys_busy</text>
+  
+  <line x1="10000" y1="3800" x2="5500" y2="1700" stroke="red" stroke-width="4" stroke-dasharray="5,5"/>
+  <text x="7750" y="2750" font-size="16" fill="red" transform="rotate(-90 7750 2750)">vpu_busy</text>
+
+  <!-- Legend -->
+  <rect x="11200" y="3800" width="2000" height="2000" fill="white" stroke="black" stroke-width="3" rx="10"/>
+  <text x="12200" y="3880" font-size="24" font-weight="bold" text-anchor="middle">LEGEND</text>
+  
+  <line x1="11400" y1="3950" x2="11600" y2="3950" stroke="black" stroke-width="4" marker-end="url(#arrowblack)"/>
+  <text x="11700" y="3960" font-size="16">Data Path (black)</text>
+  
+  <line x1="11400" y1="4020" x2="11600" y2="4020" stroke="orange" stroke-width="4" stroke-dasharray="5,5"/>
+  <text x="11700" y="4030" font-size="16" fill="orange">Control Signal (orange)</text>
+  
+  <line x1="11400" y1="4090" x2="11600" y2="4090" stroke="red" stroke-width="4" stroke-dasharray="5,5"/>
+  <text x="11700" y="4100" font-size="16" fill="red">Status Signal (red)</text>
+  
+  <text x="11400" y="4200" font-size="18" font-weight="bold">Signal Types:</text>
+  <text x="11400" y="4240" font-size="14" fill="orange">Orange underlined = External I/O</text>
+  <text x="11400" y="4280" font-size="14">Black = Internal data</text>
+  <text x="11400" y="4320" font-size="14" fill="blue">Blue = Control</text>
+  <text x="11400" y="4360" font-size="14" fill="green">Green = Status</text>
+  
+  <text x="11400" y="4450" font-size="18" font-weight="bold">Bit Widths:</text>
+  <text x="11400" y="4490" font-size="14">PC: 8-bit</text>
+  <text x="11400" y="4520" font-size="14">IR: 32-bit</text>
+  <text x="11400" y="4550" font-size="14">UB: 256-bit ports</text>
+  <text x="11400" y="4580" font-size="14">Weights: 16-bit</text>
+  <text x="11400" y="4610" font-size="14">Accumulators: 64-bit</text>
+  <text x="11400" y="4640" font-size="14">PE: 8×8 → 32-bit</text>
+  
+  <text x="11400" y="4720" font-size="18" font-weight="bold">Key Features:</text>
+  <text x="11400" y="4760" font-size="14">• 2-stage pipeline</text>
+  <text x="11400" y="4790" font-size="14">• 45-bit IF/ID register</text>
+  <text x="11400" y="4820" font-size="14">• Double-buffered memories</text>
+  <text x="11400" y="4850" font-size="14">• Hazard detection</text>
+  <text x="11400" y="4880" font-size="14">• 2×2 systolic array</text>
+  <text x="11400" y="4910" font-size="14">• UART DMA interface</text>
+  <text x="11400" y="4940" font-size="14">• 44 control signals</text>
+  <text x="11400" y="4970" font-size="14">• 20 ISA instructions</text>
+
+  <!-- Notes -->
+  <rect x="11200" y="6000" width="2000" height="3600" fill="#FFF9C4" stroke="#F57F17" stroke-width="3" rx="10"/>
+  <text x="12200" y="6080" font-size="24" font-weight="bold" text-anchor="middle">ARCHITECTURE NOTES</text>
+  
+  <text x="11400" y="6160" font-size="18" font-weight="bold">Pipeline Flow:</text>
+  <text x="11400" y="6200" font-size="14">1. Stage 1: Fetch instruction from buffer</text>
+  <text x="11400" y="6230" font-size="14">2. Stage 1: Decode opcode, args, flags</text>
+  <text x="11400" y="6260" font-size="14">3. Stage 1: Check hazards (stall if needed)</text>
+  <text x="11400" y="6290" font-size="14">4. IF/ID: Store decoded instruction</text>
+  <text x="11400" y="6320" font-size="14">5. Stage 2: Generate 44 control signals</text>
+  <text x="11400" y="6350" font-size="14">6. Stage 2: Drive datapath units</text>
+  
+  <text x="11400" y="6430" font-size="18" font-weight="bold">Data Flow:</text>
+  <text x="11400" y="6470" font-size="14">• Activations: UB → Systolic Array</text>
+  <text x="11400" y="6500" font-size="14">• Weights: FIFO → Systolic Array</text>
+  <text x="11400" y="6530" font-size="14">• Partial Sums: Systolic → Accumulators</text>
+  <text x="11400" y="6560" font-size="14">• Results: Accumulators → VPU</text>
+  <text x="11400" y="6590" font-size="14">• Outputs: VPU → UB → Host</text>
+  
+  <text x="11400" y="6670" font-size="18" font-weight="bold">Double-Buffering:</text>
+  <text x="11400" y="6710" font-size="14">• Weight FIFO: Load buffer 0 while buffer 1 feeds</text>
+  <text x="11400" y="6740" font-size="14">• Accumulators: Write buffer 0 while VPU reads buffer 1</text>
+  <text x="11400" y="6770" font-size="14">• Zero stall time between layers!</text>
+  
+  <text x="11400" y="6850" font-size="18" font-weight="bold">Hazard Detection:</text>
+  <text x="11400" y="6890" font-size="14">• Stalls pipeline when:</text>
+  <text x="11400" y="6920" font-size="14">  - sys_busy = 1 (systolic computing)</text>
+  <text x="11400" y="6950" font-size="14">  - vpu_busy = 1 (VPU processing)</text>
+  <text x="11400" y="6980" font-size="14">  - dma_busy = 1 (DMA transfer)</text>
+  <text x="11400" y="7010" font-size="14">• SYNC instruction: explicit stall</text>
+  
+  <text x="11400" y="7090" font-size="18" font-weight="bold">Performance:</text>
+  <text x="11400" y="7130" font-size="14">• 65,536 MACs per cycle (2×2 array)</text>
+  <text x="11400" y="7160" font-size="14">• 100 MHz clock (Artix-7)</text>
+  <text x="11400" y="7190" font-size="14">• ~280 mW power consumption</text>
+  <text x="11400" y="7220" font-size="14">• Pipeline efficiency: ~90%</text>
+  <text x="11400" y="7250" font-size="14">• UART: 115200 baud (11.5 KB/s)</text>
+  <text x="11400" y="7280" font-size="14">• UB bandwidth: 256 bits/cycle</text>
+  <text x="11400" y="7310" font-size="14">• Weight bandwidth: 16 bits/cycle</text>
+  <text x="11400" y="7340" font-size="14">• Accumulator: 64 bits/cycle</text>
+  
+  <text x="11400" y="7420" font-size="18" font-weight="bold">Resource Usage:</text>
+  <text x="11400" y="7460" font-size="14">• LUTs: ~12,000 (36%)</text>
+  <text x="11400" y="7490" font-size="14">• FFs: ~8,000 (24%)</text>
+  <text x="11400" y="7520" font-size="14">• DSP48E1: 4 (4%)</text>
+  <text x="11400" y="7550" font-size="14">• BRAM: 8 blocks (22%)</text>
+
+</svg>

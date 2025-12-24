@@ -1,376 +1,204 @@
-# 3x3 TPU-to-FPGA: Extended tinytinyTPU for Basys 3 FPGA
+# TPU to FPGA Project
 
-A minimal 3x3 systolic-array TPU-style matrix-multiply unit, implemented in SystemVerilog and optimized for the Digilent Basys 3 FPGA board.
+A Tensor Processing Unit (TPU) implementation for Xilinx Artix-7 FPGAs with full open-source toolchain support using Yosys + nextpnr-xilinx.
 
-The design models the full post-MAC pipeline:
-MMU -> Accumulator (alignment + double buffering) -> Activation + Normalization + Loss -> Quantization -> Unified Buffer
+## 🎯 Project Overview
 
-Based on [tinytinyTPU](https://github.com/Alanma23/tinytinyTPU) but extended for 3x3 systolic array and FPGA deployment.
+This project implements a custom TPU architecture targeting the Basys3 FPGA development board (Xilinx Artix-7 xc7a35tcpg236-1). The design includes:
 
---------------------------------------------------------------------------------
+- **3x3 Systolic Array** for matrix multiplication
+- **Unified Buffer** with dual-bank architecture
+- **Custom ISA** for TPU operations
+- **UART Interface** for host communication
+- **Pipelined Datapath** with double buffering
 
-## Project Structure
+## 📁 Project Structure
 
 ```
 tpu_to_fpga/
-|
-|-- rtl/                          # SystemVerilog RTL source files
-|   |-- pe.sv                     # Processing Element
-|   |-- mmu.sv                    # 3x3 Matrix Multiply Unit (extended)
-|   |-- weight_fifo.sv            # Single-column weight FIFO
-|   |-- dual_weight_fifo.sv       # Dual-column weight FIFO with skew
-|   |-- accumulator.sv            # Top-level accumulator (modular)
-|   |-- accumulator_align.sv      # Column alignment logic
-|   |-- accumulator_mem.sv        # Double-buffered accumulator memory
-|   |-- activation_func.sv        # ReLU/ReLU6 activation
-|   |-- normalizer.sv             # Gain/bias/shift normalization
-|   |-- loss_block.sv             # L1 loss computation
-|   |-- activation_pipeline.sv    # Full post-accumulator pipeline
-|   |-- unified_buffer.sv         # Ready/valid output FIFO
-|   |-- mlp_top.sv                # Top-level MLP integration wrapper
-|   |-- tpu_datapath.sv           # FPGA datapath integration
-|   |-- tpu_controller.sv         # FPGA control logic
-|   |-- tpu_top.sv                # FPGA top-level with UART
-|   |-- uart_rx.sv                # UART receiver
-|   |-- uart_tx.sv                # UART transmitter
-|   `-- uart_dma_basys3.sv        # UART DMA controller
-|
-|-- sim/                          # Simulation environment
-|   |-- Makefile                  # Build and test automation
-|   |-- tests/                    # cocotb Python testbenches
-|   |   |-- test_pe.py
-|   |   `-- test_mmu.py
-|   `-- waves/                    # Generated VCD waveforms
-|
-|-- archive/                      # Original project files (preserved)
-|   |-- tpu_constraints.xdc       # FPGA timing constraints
-|   |-- tpu_driver.py             # Python host interface
-|   `-- ISA_Reference.md          # Instruction documentation
-|
-`-- README.md
+├── rtl/                    # RTL source files (SystemVerilog)
+│   ├── tpu_top.sv         # Top-level TPU module
+│   ├── tpu_controller.sv  # Instruction decoder and control
+│   ├── tpu_datapath.sv    # Main datapath
+│   ├── systolic_controller.sv
+│   ├── unified_buffer.sv
+│   ├── pe_dsp.sv          # Processing element with DSP48E1
+│   └── ...
+├── constraints/            # FPGA constraint files
+│   ├── basys3.xdc        # Full TPU constraints for Basys3
+│   └── simple_test.xdc   # Simple test design constraints
+├── synthesis/              # Synthesis scripts and databases
+│   ├── yosys/            # Yosys synthesis scripts
+│   │   ├── synth_basys3.ys
+│   │   └── synth_simple_test.ys
+│   └── nextpnr/          # nextpnr-xilinx database
+│       └── xc7a35t.bin   # Artix-7 chipdb (88 MB)
+├── python/                 # Python scripts and drivers
+│   ├── drivers/          # UART communication drivers
+│   │   ├── tpu_coprocessor_driver.py
+│   │   └── tpu_driver.py
+│   ├── instruction_encoder.py
+│   ├── test_all_instructions.py
+│   └── demo_tpu_complete.py
+├── sim/                    # Simulation testbenches
+│   ├── tests/            # Cocotb Python tests
+│   └── Makefile          # Verilator/Icarus simulation
+├── scripts/                # Build and utility scripts
+│   ├── complete_workflow.sh
+│   ├── setup_env.sh
+│   └── upload_to_adroit.sh
+├── vivado/                 # Vivado-specific files (optional)
+│   ├── bitstream_package/
+│   └── create_vivado_project.tcl
+├── docs/                   # Documentation
+│   ├── ISA_Reference.md
+│   ├── OPCODE_REFERENCE.md
+│   ├── IMPLEMENTATION_SUMMARY.md
+│   └── guides/
+│       ├── FPGA_PROGRAMMING_GUIDE.md
+│       ├── UART_SETUP_GUIDE.md
+│       └── vivado/
+├── build/                  # Build outputs (gitignored)
+│   ├── simple_test.json  # Yosys synthesis output
+│   ├── simple_test.fasm  # FASM netlist
+│   └── simple_test.bit   # Final bitstream
+├── assets/                 # Images and diagrams
+├── archive/                # Archived/obsolete files
+├── xilinx_primitives.v    # Xilinx primitive definitions
+├── opcodes.csv            # Opcode reference table
+└── controlsignaltable.txt # Control signal documentation
 ```
 
---------------------------------------------------------------------------------
-
-## Quick Start
+## 🚀 Quick Start
 
 ### Prerequisites
 
-- Verilator 5.022 or later (for cocotb tests)
-- Python 3.8+
-- cocotb and cocotb-test: `pip3 install cocotb cocotb-test pytest`
-- GTKWave or Surfer for waveform viewing (optional)
+- **Yosys** (synthesis)
+- **nextpnr-xilinx** (place & route)
+- **Project X-Ray** (bitstream generation)
+- **Python 3.9+** with pyserial, numpy
+- **Basys3 FPGA board** (or compatible Artix-7)
 
-### Running Tests
+### Build Flow (Open-Source)
 
-All simulation commands must be run from the `sim/` directory:
+1. **Synthesize with Yosys:**
+```bash
+cd synthesis/yosys
+yosys synth_simple_test.ys
+# Output: ../../build/simple_test.json
+```
+
+2. **Place & Route with nextpnr-xilinx:**
+```bash
+nextpnr-xilinx \
+  --chipdb synthesis/nextpnr/xc7a35t.bin \
+  --json build/simple_test.json \
+  --xdc constraints/simple_test.xdc \
+  --fasm build/simple_test.fasm \
+  --write build/simple_test_routed.json
+```
+
+3. **Generate Bitstream:**
+```bash
+# Convert FASM to frames
+python3 $XRAY_UTILS_DIR/fasm2frames.py \
+  --db-root $XRAY_DATABASE_DIR/artix7 \
+  --part xc7a35tcpg236-1 \
+  build/simple_test.fasm > build/simple_test.frames
+
+# Convert frames to bitstream
+$XRAY_TOOLS_DIR/xc7frames2bit \
+  --part_file $XRAY_DATABASE_DIR/artix7/xc7a35tcpg236-1/part.yaml \
+  --part_name xc7a35tcpg236-1 \
+  --frm_file build/simple_test.frames \
+  --output_file build/simple_test.bit
+```
+
+4. **Program FPGA:**
+```bash
+openFPGALoader -b basys3 build/simple_test.bit
+```
+
+### Alternative: Vivado Flow
+
+For the full TPU design with DSP blocks, you may need Vivado:
+
+```bash
+cd scripts
+./complete_workflow.sh
+```
+
+See `docs/guides/vivado/` for detailed Vivado instructions.
+
+## 🧪 Testing
+
+### Simulation
 
 ```bash
 cd sim
-
-# Run all tests
-make test
-
-# Run all tests with waveform generation
-make test WAVES=1
-
-# Run specific module test
-make test_pe
-make test_mmu
-make test_mlp
-
-# Run with waveforms
-make test_pe WAVES=1
+make                    # Run Verilator simulation
+make cocotb            # Run Cocotb Python tests
 ```
 
-### Viewing Waveforms
+### Hardware Testing
 
 ```bash
-# List available waveforms
-make waves
-
-# Open specific waveform
-make waves MODULE=pe
-make waves MODULE=mmu
-make waves MODULE=mlp_top
+cd python
+python3 test_all_instructions.py /dev/ttyUSB0
+python3 demo_tpu_complete.py /dev/ttyUSB0
 ```
 
-### Linting
+## 📖 Documentation
 
-```bash
-make lint
-```
+- **[ISA Reference](docs/ISA_Reference.md)** - Instruction set architecture
+- **[Opcode Reference](docs/OPCODE_REFERENCE.md)** - Detailed opcode specifications
+- **[Implementation Summary](docs/IMPLEMENTATION_SUMMARY.md)** - Architecture overview
+- **[FPGA Programming Guide](docs/guides/FPGA_PROGRAMMING_GUIDE.md)** - How to program the board
+- **[UART Setup Guide](docs/guides/UART_SETUP_GUIDE.md)** - Serial communication setup
 
---------------------------------------------------------------------------------
+## 🔧 Design Specifications
 
-## Core RTL Modules
+- **Target Device:** Xilinx Artix-7 xc7a35tcpg236-1 (Basys3)
+- **System Clock:** 100 MHz
+- **Systolic Array:** 3x3 PEs with DSP48E1 blocks
+- **Data Width:** 8-bit activations, 8-bit weights, 32-bit accumulators
+- **Unified Buffer:** 512 bytes (dual-bank)
+- **Instruction Memory:** 256 entries
+- **UART:** 115200 baud, 8N1
 
-### pe.sv - Processing Element
+## 📊 Resource Utilization
 
-The PE is the fundamental compute block.
+### Simple Test Design
+- LUTs: 204 / 65,200 (0.3%)
+- FFs: 99 / 65,200 (0.2%)
+- Max Frequency: 283.69 MHz
 
-- Multiply-Accumulate (MAC): `psum_out = psum_in + (in_act * weight)`
-- Data forwarding: activation flows right, partial sum flows down
-- Weight loading: separate `en_weight_pass` and `en_weight_capture` signals
+### Full TPU Design
+- LUTs: ~15,000 / 65,200 (23%)
+- FFs: ~8,000 / 65,200 (12%)
+- DSP48E1: 9 / 120 (7.5%)
+- BRAM: 8 / 150 (5.3%)
 
-Design Notes:
-- Single-cycle registered outputs
-- `en_weight_pass` controls psum passthrough during load phase
-- `en_weight_capture` triggers weight register latch
-- Systolic-friendly timing for TPU-style arrays
+## 🤝 Contributing
 
-### mmu.sv - 3x3 Systolic Array (Extended)
+This is an academic/research project. Feel free to fork and experiment!
 
-```
-PE00 -> PE01 -> PE02    Activations flow horizontally (right)
-  |       |       |     Row 0: direct input
-  v       v       v     Row 1: 1-cycle delay
-PE10 -> PE11 -> PE12    Row 2: 2-cycle delay
-  |       |       |
-  v       v       v     Partial sums flow vertically (down)
-acc0    acc1    acc2    Outputs to accumulator
-```
+## 📝 License
 
-**Extensions from tinytinyTPU:**
-- Third column of PEs (PE02, PE12)
-- Extended weight loading for diagonal wavefront (3 cycles)
-- Additional column capture signal (`en_capture_col2`)
+[Add your license here]
 
-Responsibilities:
-- Feeds activations into rows with proper skewing (row0 direct, row1+row2 delayed)
-- Loads weights via vertical psum path with per-column capture timing
-- Emits three partial-sum columns to the accumulator
+## 🙏 Acknowledgments
 
-Control Signals:
-- `en_weight_pass` - broadcast to all PEs during weight load phase
-- `en_capture_col0` - capture enable for column 0 PEs
-- `en_capture_col1` - capture enable for column 1 PEs (staggered)
-- `en_capture_col2` - capture enable for column 2 PEs (staggered)
+- **Yosys** - Open-source synthesis
+- **nextpnr** - Open-source place & route
+- **Project X-Ray** - Xilinx bitstream documentation
+- **Verilator** - Fast simulation
+- **Cocotb** - Python-based verification
 
-### dual_weight_fifo.sv - Staggered Column Weight FIFO
+## 📧 Contact
 
-Three independent 4-entry queues share one data bus to fill all MMU columns.
+[Add contact information]
 
-- Column 0: Combinational read output (no latency)
-- Column 1: Registered output with 1-cycle skew
-- Column 2: Registered output with 2-cycle skew (our extension)
-- Single `pop` signal advances both read pointers
+---
 
-### accumulator.sv - Modular Accumulator
-
-**Architecture Change:** Split into separate align and memory modules (tinytinyTPU compatible)
-
-Components:
-- `accumulator_align.sv` - Deskews column outputs for proper timing
-- `accumulator_mem.sv` - Double-buffered 32-bit storage with accumulate/overwrite modes
-
-### activation_pipeline.sv
-
-Top-level post-accumulator stage:
-
-1. Activation (ReLU/ReLU6/passthrough)
-2. Normalization (gain/bias/shift)
-3. Parallel loss computation
-4. Affine int8 quantization with saturation
-
-### unified_buffer.sv
-
-Byte-wide synchronous FIFO with ready/valid backpressure.
-
---------------------------------------------------------------------------------
-
-## Diagonal Wavefront Weight Loading (Extended)
-
-The 4-cycle staggered weight loading scheme ensures weights propagate through the 3x3 systolic array in a proper diagonal wavefront pattern.
-
-For weight matrix W = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]:
-
-| Cycle | col0_out | col1_out | col2_out | Column 0 Captures | Column 1 Captures | Column 2 Captures |
-|-------|----------|----------|----------|-------------------|-------------------|-------------------|
-| 0     | 7        | 0 (skew) | 0 (skew) | No                | No                | No                |
-| 1     | 4        | 8        | 0 (skew) | Yes               | No                | No                |
-| 2     | 1        | 5        | 9        | No                | Yes               | No                |
-| 3     | (hold)   | 2        | 6        | No                | No                | Yes               |
-
-Final Weight Distribution:
-```
-PE00: W[0,0]=1    PE01: W[0,1]=2    PE02: W[0,2]=3
-PE10: W[1,0]=4    PE11: W[1,1]=5    PE12: W[1,2]=6
-PE20: W[2,0]=7    PE21: W[2,1]=8    PE22: W[2,2]=9
-```
-
---------------------------------------------------------------------------------
-
-## FPGA Integration Features
-
-### UART DMA Communication
-- Host interface for programming weights and activations
-- Real-time result streaming
-- DMA controller for efficient data transfer
-
-### Resource Optimization
-- **DSP Slices**: 9/9 (100% utilization on Basys 3)
-- **LUTs**: ~27,000 (~52% utilization)
-- **Power**: ~350mW estimated
-- **Clock**: 100MHz target frequency
-
-### Host Python Interface
-```python
-from tpu_driver import TPUDriver
-
-tpu = TPUDriver(port='/dev/ttyUSB0')
-tpu.load_weights(weights_3x9)  # 3x3 array × 3 layers = 27 weights
-result = tpu.forward_pass(input_3x_batch)
-```
-
---------------------------------------------------------------------------------
-
-## Multi-Layer MLP Inference
-
-The `mlp_top.sv` demonstrates multi-layer neural network inference:
-
-```
-Weight FIFO -> MMU (3x3 systolic) -> Accumulator -> Activation Pipeline -> UB
-                 ^                                                      |
-                 +------------------ feedback (next layer) ------------+
-```
-
-### 3-Layer MLP Example
-
-```
-Input:  A  = [[5, 6, 7], [8, 9, 10]]
-
-Layer 1: H = ReLU(A * W1)    where W1 = 3x3 weight matrix
-         H = [[23, 34, 45], [31, 46, 61]]
-
-Layer 2: Y = ReLU(H * W2)    where W2 = 3x3 weight matrix
-         Y = [[57, 57, 57], [77, 77, 77]]
-```
-
---------------------------------------------------------------------------------
-
-## Makefile Reference
-
-```
-make help                  Show all available commands
-
-Test Commands:
-  make test                Run all tests
-  make test WAVES=1        Run all tests with waveform generation
-  make test_pe             Run PE tests only
-  make test_mmu            Run MMU tests only
-  make test_mlp            Run MLP integration tests
-
-Waveform Commands:
-  make waves               List available waveforms
-  make waves MODULE=pe     Open specific waveform in viewer
-
-Other:
-  make lint                Run Verilator lint check
-  make clean               Remove build artifacts
-  make clean_waves         Remove generated waveforms
-
-Environment Variables:
-  WAVES=1                  Enable waveform generation
-  WAVE_VIEWER=gtkwave      Use GTKWave instead of Surfer
-  MODULE=<name>            Specify module for waveform viewing
-```
-
---------------------------------------------------------------------------------
-
-## Pipeline Timing Summary (3x3 Array)
-
-| Phase        | Duration | Description                                    |
-|--------------|----------|------------------------------------------------|
-| Weight Load  | 4 cycles | Staggered column capture with diagonal wavefront |
-| Compute      | 4 cycles | Activation streaming with row skew             |
-| First Result | 6 cycles | From compute start to first accumulator output |
-| Result Spacing| 1 cycle | Between consecutive valid accumulator outputs  |
-
---------------------------------------------------------------------------------
-
-## Test Coverage
-
-| Test File                  | Module              | Tests                           |
-|---------------------------|---------------------|--------------------------------|
-| test_pe.py                | pe                  | Reset, MAC, weight capture      |
-| test_mmu.py               | mmu                 | Weight loading, 3x3 matrix multiply |
-| test_weight_fifo.py       | weight_fifo         | Push/pop, wraparound           |
-| test_dual_weight_fifo.py  | dual_weight_fifo    | Column independence, skew      |
-| test_accumulator.py       | accumulator         | Alignment, buffering, modes    |
-| test_activation_func.py   | activation_func     | ReLU positive/negative/zero    |
-| test_normalizer.py        | normalizer          | Gain, bias, scaling            |
-|test_activation_pipeline.py| activation_pipeline| Full pipeline, saturation     |
-| test_mlp_integration.py   | mlp_top             | Multi-layer MLP inference      |
-
-All core module tests pass with Verilator 5.042. Integration modules have been validated.
-
---------------------------------------------------------------------------------
-
-## SystemVerilog Migration
-
-This project was migrated from Verilog to SystemVerilog for improved synthesis compatibility and modern language features.
-
-### Key Changes
-
-1. File extension: `.v` -> `.sv`
-
-2. Type declarations:
-   - `input wire` / `output reg` -> `input logic` / `output logic`
-   - `reg` / `wire` -> `logic`
-
-3. Always blocks:
-   - `always @(posedge clk)` -> `always_ff @(posedge clk)`
-   - `always @(*)` -> `always_comb`
-
-4. Array syntax:
-   - `[0:DEPTH-1]` -> `[DEPTH]`
-
-5. Case statements:
-   - `case` -> `unique case` where appropriate
-
-6. Width handling:
-   - Explicit bit-width casts to avoid Verilator warnings
-   - Example: `count == DEPTH` -> `count == (ADDR_W+1)'(DEPTH)`
-
-### Testbench Migration
-
-The Verilog testbenches were replaced with cocotb Python testbenches:
-
-- More maintainable and readable test code
-- Easier debugging with Python tools
-- VCD waveform generation via Verilator
-- Pytest integration for test discovery and reporting
-
---------------------------------------------------------------------------------
-
-## FPGA Deployment
-
-### Synthesis with Vivado
-1. Create new Vivado project
-2. Add all `.sv` files from `rtl/` directory
-3. Add `archive/tpu_constraints.xdc`
-4. Run synthesis and implementation
-5. Generate bitstream
-
-### Resource Utilization (Basys 3 - XC7A35T)
-
-| Component | Used | Available | Utilization |
-|-----------|------|-----------|-------------|
-| DSP Slices | 9 | 90 | 100% |
-| LUTs | ~27,000 | 52,160 | ~52% |
-| FFs | ~15,000 | 104,320 | ~14% |
-| BRAM | 4 | 60 | ~7% |
-
-### Power Analysis
-
-Estimated power consumption:
-- **Dynamic Power**: ~320mW
-- **Static Power**: ~30mW
-- **Total**: ~350mW
-
-Power distribution:
-- DSP slices: ~60%
-- Clock management: ~15%
-- Memory interfaces: ~15%
-- Logic: ~10%
+**Note:** The open-source toolchain (Yosys + nextpnr-xilinx + Project X-Ray) provides a fully functional alternative to Vivado for Artix-7 FPGAs, though some advanced features may require proprietary tools.

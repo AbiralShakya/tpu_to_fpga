@@ -1,0 +1,75 @@
+# Build outputs
+build/*.json
+build/*.fasm
+build/*.frames
+build/*.bit
+build/*.log
+build/*.bba
+build/*.edif
+
+# Simulation outputs
+*.vvp
+*.vcd
+*.fst
+*.ghw
+sim/obj_dir/
+sim/sim_build/
+sim/test.vvp
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+*.py[cod]
+*$py.class
+
+# Verilator
+obj_dir/
+*.d
+*.o
+*.a
+*.mk
+
+# Compiled binaries
+test_ctrl
+test_integration
+test_pipeline
+test_signals
+test_ub
+simple_test
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Vivado
+*.jou
+*.log
+*.str
+*.xpr
+*.cache/
+*.hw/
+*.ip_user_files/
+*.runs/
+*.sim/
+.Xil/
+vivado*.backup.*
+
+# Temporary files
+*.tmp
+*.bak
+*.backup
+*.old
+
+# Large database files (optional - uncomment if you want to track them)
+# synthesis/nextpnr/*.bin
+
+# Archive directory (optional)
+# archive/
+
