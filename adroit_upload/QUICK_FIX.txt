@@ -1,0 +1,80 @@
+================================================================================
+QUICK FIX: "No HDL sources found" Error
+================================================================================
+
+PROBLEM:
+--------
+Vivado is trying to SYNTHESIZE the EDIF file, but EDIF is already synthesized.
+You need to IMPORT it, not synthesize it.
+
+SOLUTION (Choose One):
+======================
+
+OPTION 1: TCL Console in Vivado (Easiest)
+------------------------------------------
+1. FIRST: Rename EDIF file to match top module (Vivado requirement)
+   In Adroit terminal:
+   cd /home/as0714/tpu_build/adroit_upload
+   cp tpu_basys3.edif tpu_top_wrapper.edif
+
+2. Open TCL Console in Vivado (Window → Tcl Console)
+3. Copy-paste these commands:
+
+cd /home/as0714/tpu_build/adroit_upload
+read_edif tpu_top_wrapper.edif
+set_property top tpu_top_wrapper [current_fileset]
+read_xdc basys3_nextpnr.xdc
+link_design -part xc7a35tcpg236-1 -top tpu_top_wrapper
+opt_design
+place_design
+route_design
+write_bitstream -force tpu_top_wrapper.bit
+
+This will generate tpu_top_wrapper.bit in the current directory.
+
+
+OPTION 2: Use TCL Script (Automated)
+-------------------------------------
+1. FIRST: Rename EDIF file (in Adroit terminal):
+   cd /home/as0714/tpu_build/adroit_upload
+   cp tpu_basys3.edif tpu_top_wrapper.edif
+
+2. In Vivado TCL Console:
+   cd /home/as0714/tpu_build/adroit_upload
+   source vivado_edif_import.tcl
+
+Or from terminal:
+
+cd /home/as0714/tpu_build/adroit_upload
+module load vivado/2023.1
+vivado -mode batch -source vivado_edif_import.tcl
+
+
+OPTION 3: Fix GUI Project
+--------------------------
+1. FIRST: Rename EDIF file (in Adroit terminal):
+   cd /home/as0714/tpu_build/adroit_upload
+   cp tpu_basys3.edif tpu_top_wrapper.edif
+
+2. Close current project: File → Close Project
+3. Open TCL Console
+4. Run:
+
+cd /home/as0714/tpu_build/adroit_upload
+read_edif tpu_top_wrapper.edif
+set_property top tpu_top_wrapper [current_fileset]
+read_xdc basys3_nextpnr.xdc
+link_design -part xc7a35tcpg236-1 -top tpu_top_wrapper
+
+4. In Flow Navigator:
+   - SKIP "Run Synthesis" (EDIF is already synthesized)
+   - Go to: IMPLEMENTATION → Run Implementation
+   - Then: PROGRAM AND DEBUG → Generate Bitstream
+
+
+KEY POINT:
+----------
+EDIF = Already synthesized. Use read_edif, NOT "Add Sources" in RTL Project.
+
+================================================================================
+

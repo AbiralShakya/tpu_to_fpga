@@ -343,10 +343,8 @@ assign row0_act = ub_rd_data[7:0];    // Row 0 activation
 assign row1_act = ub_rd_data[15:8];   // Row 1 activation
 assign row2_act = ub_rd_data[23:16];  // Row 2 activation
 
-// Extract column weights from weight FIFO (assuming 3 weights × 8-bit)
-assign col0_wt = wt_fifo_data[7:0];   // Column 0 weight
-assign col1_wt = wt_fifo_data[15:8];  // Column 1 weight
-assign col2_wt = wt_fifo_data[23:16]; // Column 2 weight
+// Column weights come from dual_weight_fifo module outputs (connected on lines 143-145)
+// No need to assign from wt_fifo_data - that would create a conflict
 
 // =============================================================================
 // DATA FLOW CONTROL

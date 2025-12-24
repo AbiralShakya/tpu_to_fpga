@@ -1,0 +1,28 @@
+================================================================================
+VIVADO BUILD - QUICK REFERENCE
+================================================================================
+
+STEP 1: Generate EDIF (Already Done!)
+  ✓ build/tpu_basys3.edif exists (1.4 MB)
+
+STEP 2: Run Vivado P&R
+  Command: vivado -mode batch -source vivado/build_tpu_vivado.tcl
+  OR:      ./scripts/build_tpu_bitstream_vivado.sh
+  
+  Time: 15-35 minutes
+  Output: build/tpu_top_wrapper.bit
+
+STEP 3: Program FPGA
+  Command: openFPGALoader -b basys3 build/tpu_top_wrapper.bit
+
+================================================================================
+FILES NEEDED FOR VIVADO:
+================================================================================
+
+1. build/tpu_basys3.edif          (1.4 MB) - Synthesized netlist
+2. constraints/basys3_nextpnr.xdc  (5 KB)   - Pin constraints
+3. vivado/build_tpu_vivado.tcl    (2 KB)   - Vivado script
+
+That's it! Just these 3 files.
+
+================================================================================

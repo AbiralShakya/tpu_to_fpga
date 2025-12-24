@@ -10,6 +10,8 @@ import numpy as np
 import time
 import struct
 import threading
+import json
+import os
 from enum import IntEnum
 from typing import List, Tuple, Optional, Union
 from dataclasses import dataclass
@@ -157,6 +159,9 @@ class TPU_Coprocessor:
         # Serial connection
         self.ser = None
         self._stream_mode = False
+        
+        # Debug logging path
+        self._debug_log_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.cursor', 'debug.log')
         self._stream_buffer_sel = 0
         
         # Statistics
@@ -174,10 +179,22 @@ class TPU_Coprocessor:
         """Establish serial connection"""
         try:
             self.ser = serial.Serial(self.port, self.baud, timeout=self.timeout)
+            # #region agent log
+            try:
+                with open(self._debug_log_path, 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"tpu_coprocessor_driver.py:_connect","message":"Serial port opened","data":{"port":self.port,"baud":self.baud,"timeout":self.timeout,"parity":self.ser.parity,"stopbits":self.ser.stopbits,"bytesize":self.ser.bytesize},"timestamp":int(time.time()*1000)}) + "\n")
+            except: pass
+            # #endregion
             time.sleep(2)  # Wait for FPGA initialization
             if self.verbose:
                 print(f"✓ Connected to TPU coprocessor on {self.port} at {self.baud} baud")
         except Exception as e:
+            # #region agent log
+            try:
+                with open(self._debug_log_path, 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"tpu_coprocessor_driver.py:_connect","message":"Serial port open failed","data":{"port":self.port,"baud":self.baud,"error":str(e)},"timestamp":int(time.time()*1000)}) + "\n")
+            except: pass
+            # #endregion
             print(f"✗ Connection failed: {e}")
             raise
     
@@ -208,14 +225,48 @@ class TPU_Coprocessor:
     def _send_command(self, cmd: int, *args: int) -> None:
         """Send UART command with arguments"""
         data = struct.pack('B' * (1 + len(args)), cmd, *args)
-        self.ser.write(data)
+        # #region agent log
+        try:
+            import json
+            with open(self._debug_log_path, 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"tpu_coprocessor_driver.py:_send_command","message":"Sending UART command","data":{"cmd":hex(cmd),"args":[hex(a) for a in args],"bytes":data.hex(),"length":len(data)},"timestamp":int(time.time()*1000)}) + "\n")
+        except: pass
+        # #endregion
+        bytes_written = self.ser.write(data)
+        # #region agent log
+        try:
+            import json
+            with open(self._debug_log_path, 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"tpu_coprocessor_driver.py:_send_command","message":"Command bytes written","data":{"cmd":hex(cmd),"bytes_written":bytes_written,"expected":len(data)},"timestamp":int(time.time()*1000)}) + "\n")
+        except: pass
+        # #endregion
         self.stats['bytes_sent'] += len(data)
     
-    def _read_response(self, length: int) -> bytes:
+    def _read_response(self, length: int, timeout: float = 1.0) -> bytes:
         """Read response from FPGA"""
-        data = self.ser.read(length)
-        self.stats['bytes_received'] += len(data)
-        return data
+        # Set timeout for this read
+        old_timeout = self.ser.timeout
+        self.ser.timeout = timeout
+        # #region agent log
+        try:
+            import json
+            with open(self._debug_log_path, 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"tpu_coprocessor_driver.py:_read_response","message":"Starting read","data":{"expected_length":length,"timeout":timeout,"in_waiting":self.ser.in_waiting},"timestamp":int(time.time()*1000)}) + "\n")
+        except: pass
+        # #endregion
+        try:
+            data = self.ser.read(length)
+            # #region agent log
+            try:
+                import json
+                with open(self._debug_log_path, 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"tpu_coprocessor_driver.py:_read_response","message":"Read complete","data":{"expected_length":length,"actual_length":len(data),"data_hex":data.hex() if data else "","in_waiting":self.ser.in_waiting},"timestamp":int(time.time()*1000)}) + "\n")
+            except: pass
+            # #endregion
+            self.stats['bytes_received'] += len(data)
+            return data
+        finally:
+            self.ser.timeout = old_timeout
     
     # ========================================================================
     # UNIFIED BUFFER OPERATIONS
@@ -242,20 +293,35 @@ class TPU_Coprocessor:
         # Send command: CMD, addr_hi, addr_lo, length_hi, length_lo
         self._send_command(UARTCommand.WRITE_UB, 0, addr, length >> 8, length & 0xFF)
         
+        # #region agent log
+        try:
+            import json
+            with open(self._debug_log_path, 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"tpu_coprocessor_driver.py:write_ub","message":"Writing UB data","data":{"addr":addr,"length":length,"first_4_bytes":data[:4].hex() if len(data) >= 4 else data.hex()},"timestamp":int(time.time()*1000)}) + "\n")
+        except: pass
+        # #endregion
         # Send data
-        self.ser.write(data)
+        bytes_written = self.ser.write(data)
+        # #region agent log
+        try:
+            import json
+            with open(self._debug_log_path, 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"tpu_coprocessor_driver.py:write_ub","message":"UB data written","data":{"addr":addr,"bytes_written":bytes_written,"expected":length},"timestamp":int(time.time()*1000)}) + "\n")
+        except: pass
+        # #endregion
         self.stats['bytes_sent'] += length
         
         if self.verbose:
             print(f"✓ Wrote {length} bytes to UB[{addr}]")
     
-    def read_ub(self, addr: int, length: int) -> bytes:
+    def read_ub(self, addr: int, length: int, timeout: float = 2.0) -> bytes:
         """
         Read data from Unified Buffer
         
         Args:
             addr: UB address (0-255)
             length: Number of bytes (rounded up to multiple of 32)
+            timeout: Read timeout in seconds
         
         Returns:
             bytes: Data read from UB
@@ -264,11 +330,28 @@ class TPU_Coprocessor:
         if length % 32 != 0:
             length = ((length // 32) + 1) * 32
         
+        # #region agent log
+        try:
+            import json
+            with open(self._debug_log_path, 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"tpu_coprocessor_driver.py:read_ub","message":"Reading UB","data":{"addr":addr,"length":length,"timeout":timeout},"timestamp":int(time.time()*1000)}) + "\n")
+        except: pass
+        # #endregion
         # Send command
         self._send_command(UARTCommand.READ_UB, 0, addr, length >> 8, length & 0xFF)
         
-        # Read response
-        data = self._read_response(length)
+        # Small delay to let FPGA process command
+        time.sleep(0.01)
+        
+        # Read response with longer timeout
+        data = self._read_response(length, timeout=timeout)
+        # #region agent log
+        try:
+            import json
+            with open(self._debug_log_path, 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"tpu_coprocessor_driver.py:read_ub","message":"UB read complete","data":{"addr":addr,"expected_length":length,"actual_length":len(data)},"timestamp":int(time.time()*1000)}) + "\n")
+        except: pass
+        # #endregion
         
         if self.verbose and len(data) != length:
             print(f"⚠ Warning: Expected {length} bytes, got {len(data)}")
@@ -359,24 +442,24 @@ class TPU_Coprocessor:
         """
         try:
             # #region agent log
-            import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:353','message':'enable_stream_mode called','data':{'current_stream_mode':self._stream_mode,'bytes_in_waiting':self.ser.in_waiting if self.ser else -1},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'E'})+'\n')
+            import json,time;open('/Users/abiralshakya/Documents/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:353','message':'enable_stream_mode called','data':{'current_stream_mode':self._stream_mode,'bytes_in_waiting':self.ser.in_waiting if self.ser else -1},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'E'})+'\n')
             # #endregion
             # Send stream mode command
             self._send_command(UARTCommand.STREAM_INSTR)
             # #region agent log
-            import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:362','message':'Sent STREAM_INSTR command','data':{'command':UARTCommand.STREAM_INSTR,'bytes_sent':self.stats['bytes_sent']},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'E'})+'\n')
+            import json,time;open('/Users/abiralshakya/Documents/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:362','message':'Sent STREAM_INSTR command','data':{'command':UARTCommand.STREAM_INSTR,'bytes_sent':self.stats['bytes_sent']},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'E'})+'\n')
             # #endregion
             
             # Read response: 0x00=ready, 0xFF=not ready, 0x01=buffer select
             response = self._read_response(1)
             # #region agent log
-            import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:369','message':'Received stream mode response','data':{'response_len':len(response),'response_hex':response.hex() if response else 'empty','status_byte':response[0] if response else None},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'E'})+'\n')
+            import json,time;open('/Users/abiralshakya/Documents/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:369','message':'Received stream mode response','data':{'response_len':len(response),'response_hex':response.hex() if response else 'empty','status_byte':response[0] if response else None},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'E'})+'\n')
             # #endregion
             if len(response) == 0:
                 if self.verbose:
                     print("⚠ No response from FPGA")
                 # #region agent log
-                import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:377','message':'Empty response from enable_stream_mode','data':{'timeout':self.timeout},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'E'})+'\n')
+                import json,time;open('/Users/abiralshakya/Documents/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:377','message':'Empty response from enable_stream_mode','data':{'timeout':self.timeout},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'E'})+'\n')
                 # #endregion
                 return False
             
@@ -385,14 +468,14 @@ class TPU_Coprocessor:
                 if self.verbose:
                     print("✗ FPGA not ready for streaming")
                 # #region agent log
-                import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:387','message':'FPGA not ready','data':{'status':status},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'E'})+'\n')
+                import json,time;open('/Users/abiralshakya/Documents/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:387','message':'FPGA not ready','data':{'status':status},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'E'})+'\n')
                 # #endregion
                 return False
             
             self._stream_mode = True
             self._stream_buffer_sel = status & 0x01  # Extract buffer select
             # #region agent log
-            import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:396','message':'Streaming mode enabled successfully','data':{'buffer_sel':self._stream_buffer_sel,'status':status},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'E'})+'\n')
+            import json,time;open('/Users/abiralshakya/Documents/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:396','message':'Streaming mode enabled successfully','data':{'buffer_sel':self._stream_buffer_sel,'status':status},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'E'})+'\n')
             # #endregion
             
             if self.verbose:
@@ -404,7 +487,7 @@ class TPU_Coprocessor:
                 print(f"✗ Failed to enable streaming mode: {e}")
             self.stats['errors'] += 1
             # #region agent log
-            import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:410','message':'Exception in enable_stream_mode','data':{'error':str(e)},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'E'})+'\n')
+            import json,time;open('/Users/abiralshakya/Documents/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:410','message':'Exception in enable_stream_mode','data':{'error':str(e)},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'E'})+'\n')
             # #endregion
             return False
     
@@ -429,7 +512,7 @@ class TPU_Coprocessor:
             bool: True if instruction accepted, False if buffer full
         """
         # #region agent log
-        import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:396','message':'stream_instruction called','data':{'opcode_type':type(opcode).__name__,'opcode_value':str(opcode),'arg1':arg1,'arg2':arg2,'arg3':arg3,'flags':flags,'stream_mode':self._stream_mode,'retry':retry},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'C'})+'\n')
+        import json,time;open('/Users/abiralshakya/Documents/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:396','message':'stream_instruction called','data':{'opcode_type':type(opcode).__name__,'opcode_value':str(opcode),'arg1':arg1,'arg2':arg2,'arg3':arg3,'flags':flags,'stream_mode':self._stream_mode,'retry':retry},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'C'})+'\n')
         # #endregion
         
         if not self._stream_mode:
@@ -439,44 +522,44 @@ class TPU_Coprocessor:
         if isinstance(opcode, Instruction):
             instr = opcode
             # #region agent log
-            import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:416','message':'Using Instruction object','data':{'opcode':instr.opcode,'arg1':instr.arg1,'arg2':instr.arg2,'arg3':instr.arg3,'flags':instr.flags},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'C'})+'\n')
+            import json,time;open('/Users/abiralshakya/Documents/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:416','message':'Using Instruction object','data':{'opcode':instr.opcode,'arg1':instr.arg1,'arg2':instr.arg2,'arg3':instr.arg3,'flags':instr.flags},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'C'})+'\n')
             # #endregion
         else:
             if isinstance(opcode, Opcode):
                 opcode = opcode.value
             instr = Instruction(opcode, arg1, arg2, arg3, flags)
             # #region agent log
-            import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:426','message':'Created Instruction from params','data':{'opcode':opcode,'arg1':arg1,'arg2':arg2,'arg3':arg3,'flags':flags},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'C'})+'\n')
+            import json,time;open('/Users/abiralshakya/Documents/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:426','message':'Created Instruction from params','data':{'opcode':opcode,'arg1':arg1,'arg2':arg2,'arg3':arg3,'flags':flags},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'C'})+'\n')
             # #endregion
         
         # Send instruction (4 bytes, big-endian)
         instr_bytes = instr.to_bytes()
         # #region agent log
-        import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:435','message':'Sending instruction bytes','data':{'instr_bytes':instr_bytes.hex(),'bytes_in_waiting_before':self.ser.in_waiting if self.ser else -1},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'A,B'})+'\n')
+        import json,time;open('/Users/abiralshakya/Documents/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:435','message':'Sending instruction bytes','data':{'instr_bytes':instr_bytes.hex(),'bytes_in_waiting_before':self.ser.in_waiting if self.ser else -1},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'A,B'})+'\n')
         # #endregion
         self.ser.write(instr_bytes)
         self.stats['bytes_sent'] += 4
         
         # Read acknowledgment: 0x00=accepted, 0xFF=full, 0x01=buffer swapped
         # #region agent log
-        import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:445','message':'About to read ACK','data':{'bytes_in_waiting':self.ser.in_waiting if self.ser else -1,'timeout':self.timeout},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'B,D'})+'\n')
+        import json,time;open('/Users/abiralshakya/Documents/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:445','message':'About to read ACK','data':{'bytes_in_waiting':self.ser.in_waiting if self.ser else -1,'timeout':self.timeout},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'B,D'})+'\n')
         # #endregion
         response = self._read_response(1)
         # #region agent log
-        import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:451','message':'Received ACK response','data':{'response_len':len(response),'response_hex':response.hex() if response else 'empty','ack_byte':response[0] if response else None},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'A,D'})+'\n')
+        import json,time;open('/Users/abiralshakya/Documents/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:451','message':'Received ACK response','data':{'response_len':len(response),'response_hex':response.hex() if response else 'empty','ack_byte':response[0] if response else None},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'A,D'})+'\n')
         # #endregion
         if len(response) == 0:
             if self.verbose:
                 print("⚠ No acknowledgment from FPGA")
             self.stats['errors'] += 1
             # #region agent log
-            import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:460','message':'Empty response from FPGA','data':{'stats':self.stats},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'D'})+'\n')
+            import json,time;open('/Users/abiralshakya/Documents/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:460','message':'Empty response from FPGA','data':{'stats':self.stats},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'D'})+'\n')
             # #endregion
             return False
         
         ack = response[0]
         # #region agent log
-        import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:467','message':'Processing ACK byte','data':{'ack':ack,'ack_hex':hex(ack),'expected_codes':{'accepted':'0x00','full':'0xff','swapped':'0x01'}},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'A'})+'\n')
+        import json,time;open('/Users/abiralshakya/Documents/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:467','message':'Processing ACK byte','data':{'ack':ack,'ack_hex':hex(ack),'expected_codes':{'accepted':'0x00','full':'0xff','swapped':'0x01'}},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'A'})+'\n')
         # #endregion
         
         if ack == 0x00:
@@ -487,7 +570,7 @@ class TPU_Coprocessor:
         elif ack == 0xFF:
             # Buffer full - backpressure
             # #region agent log
-            import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:481','message':'Buffer full - backpressure','data':{'retry':retry,'instr':str(instr)},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'B'})+'\n')
+            import json,time;open('/Users/abiralshakya/Documents/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:481','message':'Buffer full - backpressure','data':{'retry':retry,'instr':str(instr)},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'B'})+'\n')
             # #endregion
             if self.verbose:
                 print(f"⚠ Buffer full, instruction not accepted: {instr}")
@@ -496,7 +579,7 @@ class TPU_Coprocessor:
                 # Wait and retry
                 time.sleep(0.01)
                 # #region agent log
-                import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:492','message':'Retrying after backpressure','data':{'sleep_time_ms':10},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'B'})+'\n')
+                import json,time;open('/Users/abiralshakya/Documents/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:492','message':'Retrying after backpressure','data':{'sleep_time_ms':10},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'B'})+'\n')
                 # #endregion
                 # Need to pass Instruction object for retry
                 if isinstance(opcode, Instruction):
@@ -516,7 +599,7 @@ class TPU_Coprocessor:
         
         else:
             # #region agent log
-            import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:514','message':'Unexpected ACK byte','data':{'ack':ack,'ack_hex':hex(ack),'bytes_in_waiting_after':self.ser.in_waiting if self.ser else -1,'instr':str(instr)},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'A,B'})+'\n')
+            import json,time;open('/Users/abiralshakya/Documents/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:514','message':'Unexpected ACK byte','data':{'ack':ack,'ack_hex':hex(ack),'bytes_in_waiting_after':self.ser.in_waiting if self.ser else -1,'instr':str(instr)},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'A,B'})+'\n')
             # #endregion
             if self.verbose:
                 print(f"⚠ Unexpected acknowledgment: 0x{ack:02X}")
@@ -558,20 +641,64 @@ class TPU_Coprocessor:
     # STATUS MONITORING
     # ========================================================================
     
-    def read_status(self) -> Optional[TPUStatus]:
+    def read_status(self, timeout: float = 0.5) -> Optional[TPUStatus]:
         """
         Read TPU status register
+        
+        Args:
+            timeout: Read timeout in seconds
         
         Returns:
             TPUStatus object or None if read failed
         """
+        # #region agent log
+        try:
+            import json
+            with open(self._debug_log_path, 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"tpu_coprocessor_driver.py:read_status","message":"Reading status","data":{"timeout":timeout},"timestamp":int(time.time()*1000)}) + "\n")
+        except: pass
+        # #endregion
         self._send_command(UARTCommand.READ_STATUS)
-        response = self._read_response(1)
+        
+        # Small delay to let FPGA process command
+        time.sleep(0.01)
+        
+        response = self._read_response(1, timeout=timeout)
+        
+        # #region agent log
+        try:
+            import json
+            with open(self._debug_log_path, 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"tpu_coprocessor_driver.py:read_status","message":"Status read result","data":{"response_length":len(response),"response_hex":response.hex() if response else "","status_byte":hex(response[0]) if len(response) > 0 else None},"timestamp":int(time.time()*1000)}) + "\n")
+        except: pass
+        # #endregion
         
         if len(response) == 0:
+            if self.verbose:
+                print("⚠ Warning: No status response from FPGA")
             return None
         
-        return TPUStatus.from_byte(response[0])
+        try:
+            status = TPUStatus.from_byte(response[0])
+            # #region agent log
+            try:
+                import json
+                with open(self._debug_log_path, 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"tpu_coprocessor_driver.py:read_status","message":"Status parsed","data":{"sys_busy":status.sys_busy,"vpu_busy":status.vpu_busy,"ub_busy":status.ub_busy},"timestamp":int(time.time()*1000)}) + "\n")
+            except: pass
+            # #endregion
+            return status
+        except Exception as e:
+            # #region agent log
+            try:
+                import json
+                with open(self._debug_log_path, 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"tpu_coprocessor_driver.py:read_status","message":"Status parse failed","data":{"error":str(e),"response_hex":response.hex()},"timestamp":int(time.time()*1000)}) + "\n")
+            except: pass
+            # #endregion
+            if self.verbose:
+                print(f"⚠ Warning: Failed to parse status byte 0x{response[0]:02X}: {e}")
+            return None
     
     def wait_done(self, timeout: float = 10.0, poll_interval: float = 0.01) -> bool:
         """

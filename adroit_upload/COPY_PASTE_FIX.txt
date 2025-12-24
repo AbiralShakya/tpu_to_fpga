@@ -1,0 +1,28 @@
+================================================================================
+COPY-PASTE FIX FOR "No files found to match top module" ERROR
+================================================================================
+
+STEP 1: Rename EDIF File (In Adroit Terminal)
+----------------------------------------------
+cd /home/as0714/tpu_build/adroit_upload
+cp tpu_basys3.edif tpu_top_wrapper.edif
+
+STEP 2: Run in Vivado TCL Console
+-----------------------------------
+cd /home/as0714/tpu_build/adroit_upload
+read_edif tpu_top_wrapper.edif
+set_property top tpu_top_wrapper [current_fileset]
+read_xdc basys3_nextpnr.xdc
+link_design -part xc7a35tcpg236-1 -top tpu_top_wrapper
+opt_design
+place_design
+route_design
+write_bitstream -force tpu_top_wrapper.bit
+
+================================================================================
+KEY POINT: EDIF filename MUST match top module name!
+================================================================================
+File: tpu_basys3.edif → tpu_top_wrapper.edif
+Top module: tpu_top_wrapper
+================================================================================
+

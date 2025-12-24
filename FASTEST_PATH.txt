@@ -1,0 +1,45 @@
+================================================================================
+FASTEST PATH TO TESTING ISA ON FPGA
+================================================================================
+
+STEP 1: Generate Bitstream (On Adroit - Vivado TCL Console)
+------------------------------------------------------------
+Copy-paste this in Vivado TCL Console:
+
+cd /home/as0714/tpu_build/adroit_upload
+read_edif tpu_basys3.edif
+set_property top tpu_top_wrapper [current_fileset]
+read_xdc basys3_nextpnr.xdc
+link_design -part xc7a35tcpg236-1 -top tpu_top_wrapper
+opt_design
+place_design
+route_design
+write_bitstream -force tpu_top_wrapper.bit
+
+Wait 15-30 minutes. Output: tpu_top_wrapper.bit
+
+
+STEP 2: Download Bitstream (From Mac)
+--------------------------------------
+scp as0714@adroit.princeton.edu:~/tpu_build/adroit_upload/tpu_top_wrapper.bit build/
+
+
+STEP 3: Program FPGA (On Mac)
+------------------------------
+openFPGALoader -b basys3 build/tpu_top_wrapper.bit
+
+
+STEP 4: Test ISA (On Mac)
+--------------------------
+# Find UART port
+ls /dev/tty.usbserial-*
+
+# Run tests
+python3 python/test_all_instructions.py /dev/tty.usbserial-XXXXX
+
+# Or use driver
+python3 python/drivers/tpu_driver.py /dev/tty.usbserial-XXXXX
+
+
+TOTAL TIME: ~20-35 minutes (mostly waiting for Vivado)
+================================================================================

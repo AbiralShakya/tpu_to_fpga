@@ -7,7 +7,9 @@ set -e
 NETID="as0714"
 ADROIT_HOST="adroit.princeton.edu"
 REMOTE_DIR="/scratch/network/as0714/tpu_to_fpga"
-LOCAL_DIR="/Users/abiralshakya/Documents/tpu_to_fpga"
+# Get script directory and project root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOCAL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 echo "=========================================="
 echo "Upload TPU Project to Princeton Adroit"

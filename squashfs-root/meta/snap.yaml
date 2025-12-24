@@ -1,0 +1,14 @@
+name: yosys
+version: '0.38'
+summary: yosys FPGA logic synthesis
+description: 'Pre-packaged logic synthesis tool for use with open source FPGA toolchains
+
+  '
+apps:
+  yosys:
+    command: usr/local/bin/yosys
+architectures:
+- amd64
+base: core20
+confinement: classic
+grade: devel

@@ -61,7 +61,7 @@ class TPUInstructionTester:
         """Initialize TPU coprocessor connection"""
         print(f"{Colors.BOLD}Initializing TPU Coprocessor on {port}...{Colors.ENDC}")
         # #region agent log
-        import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'test_all_instructions.py:60','message':'Initializing TPU connection','data':{'port':port},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'ALL'})+'\n')
+        import json,time;open('/Users/abiralshakya/Documents/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'test_all_instructions.py:60','message':'Initializing TPU connection','data':{'port':port},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'ALL'})+'\n')
         # #endregion
         self.tpu = TPU_Coprocessor(port)
         print_success("TPU Coprocessor connected")
@@ -119,7 +119,7 @@ class TPUInstructionTester:
         """Test 1: NOP - No Operation"""
         print_test_header("NOP - No Operation", 1, self.total_tests)
         # #region agent log
-        import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'test_all_instructions.py:115','message':'Starting test_nop','data':{'test_num':1},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'ALL'})+'\n')
+        import json,time;open('/Users/abiralshakya/Documents/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'test_all_instructions.py:115','message':'Starting test_nop','data':{'test_num':1},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'ALL'})+'\n')
         # #endregion
 
         try:
@@ -131,11 +131,11 @@ class TPUInstructionTester:
             for i in range(5):
                 instr = Instruction(Opcode.NOP, 0, 0, 0, 0)
                 # #region agent log
-                import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'test_all_instructions.py:127','message':'About to send NOP instruction','data':{'iteration':i,'instr':str(instr)},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'ALL'})+'\n')
+                import json,time;open('/Users/abiralshakya/Documents/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'test_all_instructions.py:127','message':'About to send NOP instruction','data':{'iteration':i,'instr':str(instr)},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'ALL'})+'\n')
                 # #endregion
                 result = self.tpu.stream_instruction(instr)
                 # #region agent log
-                import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'test_all_instructions.py:133','message':'NOP instruction sent result','data':{'iteration':i,'result':result},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'ALL'})+'\n')
+                import json,time;open('/Users/abiralshakya/Documents/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'test_all_instructions.py:133','message':'NOP instruction sent result','data':{'iteration':i,'result':result},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'ALL'})+'\n')
                 # #endregion
                 print_info(f"Sent NOP instruction {i+1}/5")
 
@@ -146,26 +146,26 @@ class TPUInstructionTester:
 
             # Wait for completion
             # #region agent log
-            import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'test_all_instructions.py:136','message':'Waiting for TPU done','data':{'timeout':2.0},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'D'})+'\n')
+            import json,time;open('/Users/abiralshakya/Documents/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'test_all_instructions.py:136','message':'Waiting for TPU done','data':{'timeout':2.0},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'D'})+'\n')
             # #endregion
             if self.tpu.wait_done(timeout=2.0):
                 print_success("NOP test passed - TPU executed and halted")
                 self.tests_passed += 1
                 # #region agent log
-                import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'test_all_instructions.py:144','message':'Test passed','data':{'test':'nop'},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'ALL'})+'\n')
+                import json,time;open('/Users/abiralshakya/Documents/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'test_all_instructions.py:144','message':'Test passed','data':{'test':'nop'},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'ALL'})+'\n')
                 # #endregion
             else:
                 print_failure("NOP test failed - timeout waiting for completion")
                 self.tests_failed += 1
                 # #region agent log
-                import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'test_all_instructions.py:151','message':'Test failed - timeout','data':{'test':'nop'},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'D'})+'\n')
+                import json,time;open('/Users/abiralshakya/Documents/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'test_all_instructions.py:151','message':'Test failed - timeout','data':{'test':'nop'},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'D'})+'\n')
                 # #endregion
 
         except Exception as e:
             print_failure(f"NOP test failed with exception: {e}")
             self.tests_failed += 1
             # #region agent log
-            import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'test_all_instructions.py:159','message':'Test exception','data':{'test':'nop','error':str(e)},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'ALL'})+'\n')
+            import json,time;open('/Users/abiralshakya/Documents/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'test_all_instructions.py:159','message':'Test exception','data':{'test':'nop','error':str(e)},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'ALL'})+'\n')
             # #endregion
 
     def test_sync(self):
@@ -783,7 +783,7 @@ class TPUInstructionTester:
         print(f"\n{Colors.BOLD}TPU Statistics:{Colors.ENDC}")
         stats = self.tpu.get_stats()
         # #region agent log
-        import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'test_all_instructions.py:760','message':'Final statistics','data':{'stats':stats,'tests_passed':self.tests_passed,'tests_failed':self.tests_failed},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'ALL'})+'\n')
+        import json,time;open('/Users/abiralshakya/Documents/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'test_all_instructions.py:760','message':'Final statistics','data':{'stats':stats,'tests_passed':self.tests_passed,'tests_failed':self.tests_failed},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'ALL'})+'\n')
         # #endregion
         print(f"Bytes Sent:       {stats['bytes_sent']}")
         print(f"Bytes Received:   {stats['bytes_received']}")

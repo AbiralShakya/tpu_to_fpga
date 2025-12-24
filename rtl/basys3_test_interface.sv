@@ -330,33 +330,127 @@ end
 // RESULTS VIEWING
 // ============================================================================
 
+logic [7:0] phys_ub_rd_addr_reg;
+
 always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
-        ub_rd_en <= 1'b0;
-        ub_rd_addr <= 8'b0;
+        phys_ub_rd_addr_reg <= 8'b0;
     end else begin
-        ub_rd_en <= 1'b0;
-
-        if (current_mode == MODE_RESULTS) begin
+        if (current_mode == MODE_RESULTS && !uart_active) begin
             if (btn_press[2]) begin  // BTNL - previous address
-                ub_rd_addr <= ub_rd_addr - 1;
-                ub_rd_en <= 1'b1;
+                phys_ub_rd_addr_reg <= phys_ub_rd_addr_reg - 1;
             end else if (btn_press[1]) begin  // BTNR - next address
-                ub_rd_addr <= ub_rd_addr + 1;
-                ub_rd_en <= 1'b1;
-            end else if (btn_press[0]) begin  // BTNC - read current address
-                ub_rd_en <= 1'b1;
+                phys_ub_rd_addr_reg <= phys_ub_rd_addr_reg + 1;
             end
         end
     end
 end
 
+// ub_rd_addr multiplexing
+assign ub_rd_addr = uart_active ? uart_ub_rd_addr : phys_ub_rd_addr_reg;
+
 // ============================================================================
-// UART INTERFACE (PASS-THROUGH)
+// UART DMA INTERFACE (Improved with Streaming Mode)
 // ============================================================================
 
-// For now, disable UART DMA when using physical interface
-// TODO: Implement UART DMA integration
-assign uart_tx = 1'b1;  // Idle high
+// UART DMA signals
+logic uart_ub_wr_en;
+logic [7:0] uart_ub_wr_addr;
+logic [255:0] uart_ub_wr_data;
+logic uart_ub_rd_en;
+logic [7:0] uart_ub_rd_addr;
+logic [255:0] uart_ub_rd_data;
+logic uart_wt_wr_en;
+logic [9:0] uart_wt_wr_addr;
+logic [63:0] uart_wt_wr_data;
+logic uart_instr_wr_en;
+logic [4:0] uart_instr_wr_addr;
+logic [31:0] uart_instr_wr_data;
+logic uart_start_execution;
+
+// Instantiate improved UART DMA module
+uart_dma_basys3_improved uart_dma (
+    .clk(clk),
+    .rst_n(rst_n),
+    .uart_rx(uart_rx),
+    .uart_tx(uart_tx),
+    .ub_wr_en(uart_ub_wr_en),
+    .ub_wr_addr(uart_ub_wr_addr),
+    .ub_wr_data(uart_ub_wr_data),
+    .ub_rd_en(uart_ub_rd_en),
+    .ub_rd_addr(uart_ub_rd_addr),
+    .ub_rd_data(ub_rd_data),  // Read from UB
+    .wt_wr_en(uart_wt_wr_en),
+    .wt_wr_addr(uart_wt_wr_addr),
+    .wt_wr_data(uart_wt_wr_data),
+    .instr_wr_en(uart_instr_wr_en),
+    .instr_wr_addr(uart_instr_wr_addr),
+    .instr_wr_data(uart_instr_wr_data),
+    .start_execution(uart_start_execution),
+    .sys_busy(sys_busy),
+    .sys_done(sys_done),
+    .vpu_busy(vpu_busy),
+    .vpu_done(vpu_done),
+    .ub_busy(ub_busy),
+    .ub_done(ub_done),
+    .debug_state(),
+    .debug_cmd(),
+    .debug_byte_count()
+);
+
+// Multiplex between UART DMA and physical interface
+// UART DMA takes priority when active (when UART is being used)
+logic uart_active;
+assign uart_active = uart_ub_wr_en | uart_ub_rd_en | uart_wt_wr_en | uart_instr_wr_en | uart_start_execution;
+
+// Physical interface signals (from existing logic)
+logic phys_ub_wr_en;
+logic [7:0] phys_ub_wr_addr;
+logic [255:0] phys_ub_wr_data;
+logic phys_ub_rd_en;
+logic [7:0] phys_ub_rd_addr;
+logic phys_wt_wr_en;
+logic [9:0] phys_wt_wr_addr;
+logic [63:0] phys_wt_wr_data;
+logic phys_instr_wr_en;
+logic [4:0] phys_instr_wr_addr;
+logic [31:0] phys_instr_wr_data;
+logic phys_start_execution;
+
+// Physical interface assignments (from existing always blocks)
+assign phys_ub_wr_en = (current_mode == MODE_DATA && btn_press[0]);
+assign phys_ub_wr_addr = sw[15:8];
+assign phys_ub_wr_data = {240'b0, sw};
+
+assign phys_ub_rd_en = (current_mode == MODE_RESULTS && (btn_press[2] | btn_press[1] | btn_press[0]));
+// phys_ub_rd_addr handled in always_ff block
+
+assign phys_wt_wr_en = (current_mode == MODE_WEIGHT && btn_press[0]);
+assign phys_wt_wr_addr = sw[15:6];
+assign phys_wt_wr_data = {48'b0, sw};
+
+assign phys_instr_wr_en = (current_mode == MODE_INSTR && btn_press[0]);
+assign phys_instr_wr_addr = program_counter[4:0];
+assign phys_instr_wr_data = {6'b000000, sw[15:12], sw[11:8], sw[7:4], sw[3:0], 2'b00};
+
+assign phys_start_execution = (current_mode == MODE_EXECUTE && btn_press[0]);
+
+// Output multiplexing - UART takes priority
+assign ub_wr_en = uart_active ? uart_ub_wr_en : phys_ub_wr_en;
+assign ub_wr_addr = uart_active ? uart_ub_wr_addr : phys_ub_wr_addr;
+assign ub_wr_data = uart_active ? uart_ub_wr_data : phys_ub_wr_data;
+
+assign ub_rd_en = uart_active ? uart_ub_rd_en : phys_ub_rd_en;
+assign ub_rd_addr = uart_active ? uart_ub_rd_addr : phys_ub_rd_addr_reg;
+
+assign wt_wr_en = uart_active ? uart_wt_wr_en : phys_wt_wr_en;
+assign wt_wr_addr = uart_active ? uart_wt_wr_addr : phys_wt_wr_addr;
+assign wt_wr_data = uart_active ? uart_wt_wr_data : phys_wt_wr_data;
+
+assign instr_wr_en = uart_active ? uart_instr_wr_en : phys_instr_wr_en;
+assign instr_wr_addr = uart_active ? uart_instr_wr_addr : phys_instr_wr_addr;
+assign instr_wr_data = uart_active ? uart_instr_wr_data : phys_instr_wr_data;
+
+assign start_execution = uart_active ? uart_start_execution : phys_start_execution;
 
 endmodule

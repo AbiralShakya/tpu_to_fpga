@@ -18,10 +18,26 @@ docker run --rm -v $(pwd):/work ghcr.io/hdl/symbiflow/symbiflow-arch-defs:latest
     bash -c "cd /work && yosys synth_basys3.ys"
 
 echo "Running nextpnr-xilinx..."
-docker run --rm -v $(pwd):/work -v /Users/abiralshakya/Downloads/diffTPU:/diffTPU \
+
+# Get script directory and project root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Try to find chipdb file
+CHIPDB_SRC=""
+if [ -f "$PROJECT_ROOT/synthesis/nextpnr/xc7a35t.bin" ]; then
+    CHIPDB_SRC="$PROJECT_ROOT/synthesis/nextpnr/xc7a35t.bin"
+elif [ -f "/Users/abiralshakya/Downloads/diffTPU/xc7a35t.bin" ]; then
+    CHIPDB_SRC="/Users/abiralshakya/Downloads/diffTPU/xc7a35t.bin"
+else
+    echo "✗ Error: xc7a35t.bin not found!"
+    exit 1
+fi
+
+docker run --rm -v "$PROJECT_ROOT":/work -v "$(dirname "$CHIPDB_SRC")":/chipdb \
     ghcr.io/hdl/symbiflow/symbiflow-arch-defs:latest \
     bash -c "cd /work && nextpnr-xilinx \
-        --chipdb /diffTPU/xc7a35t.bin \
+        --chipdb /chipdb/xc7a35t.bin \
         --xdc tpu_constraints.xdc \
         --json build/tpu_basys3.json \
         --fasm build/tpu_basys3.fasm"

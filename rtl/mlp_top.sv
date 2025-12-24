@@ -183,18 +183,18 @@ module mlp_top (
 
     assign mmu_valid = (compute_phase && cycle_cnt_reg >= 6'd3) || drain_phase;  // Adjusted for 3x3 timing
 
-    accumulator accumulator_u (
+    accumulator_mem accumulator_u (
         .clk               (clk),
         .rst_n             (rst_n),
-        .valid_in          (mmu_valid),
-        .accumulator_enable(accum_en),
-        .addr_sel          (addr_sel),
-        .mmu_col0_in       (mmu_acc0_out),
-        .mmu_col1_in       (mmu_acc1_out),
-        .mmu_col2_in       (mmu_acc2_out),
-        .acc_col0_out      (acc0),
-        .acc_col1_out      (acc1),
-        .acc_col2_out      (acc2),
+        .enable            (mmu_valid),
+        .accumulator_mode  (accum_en),
+        .buffer_select     (addr_sel),
+        .in_col0           (mmu_acc0_out),
+        .in_col1           (mmu_acc1_out),
+        .in_col2           (mmu_acc2_out),
+        .out_col0          (acc0),
+        .out_col1          (acc1),
+        .out_col2          (acc2),
         .valid_out         (acc_valid)
     );
 

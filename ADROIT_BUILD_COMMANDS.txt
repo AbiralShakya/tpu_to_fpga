@@ -1,0 +1,76 @@
+# Quick Copy-Paste Commands for Adroit Build
+
+# ============================================================================
+# STEP 1: Upload Files (Run from Mac)
+# ============================================================================
+scp build/tpu_basys3.edif constraints/basys3_nextpnr.xdc as0714@adroit.princeton.edu:~/tpu_build/adroit_upload/
+
+# ============================================================================
+# STEP 2: Build with Vivado (Run on Adroit - TCL Console)
+# ============================================================================
+# SSH to Adroit first:
+# ssh as0714@adroit.princeton.edu
+# cd ~/tpu_build/adroit_upload
+# module load vivado/2023.1
+# vivado -mode tcl
+
+# Then paste these commands:
+
+cd ~/tpu_build/adroit_upload
+
+# Copy EDIF to match top module name
+cp tpu_basys3.edif tpu_top_wrapper.edif
+
+# Read EDIF
+read_edif tpu_top_wrapper.edif
+
+# Set top module
+set_property top tpu_top_wrapper [current_fileset]
+
+# Read constraints (CRITICAL - assigns UART pins B18/A18)
+read_xdc basys3_nextpnr.xdc
+
+# Link design
+link_design -part xc7a35tcpg236-1 -top tpu_top_wrapper
+
+# ============================================================================
+# STEP 3: VERIFY UART PINS ARE ASSIGNED (DO THIS BEFORE IMPLEMENTATION!)
+# ============================================================================
+report_io | grep -i uart
+
+# Expected output:
+#   uart_tx    B18
+#   uart_rx    A18
+#
+# If you DON'T see this, the constraints weren't applied! Stop and check.
+
+# ============================================================================
+# STEP 4: Run Implementation
+# ============================================================================
+opt_design
+place_design
+route_design
+
+# ============================================================================
+# STEP 5: VERIFY ROUTING
+# ============================================================================
+report_route_status
+
+# Check that all nets are routed (should show 0 unplaced/unrouted)
+
+# ============================================================================
+# STEP 6: Generate Bitstream
+# ============================================================================
+write_bitstream -force tpu_top_wrapper_verified.bit
+
+# ============================================================================
+# STEP 7: Download (Run from Mac)
+# ============================================================================
+scp as0714@adroit.princeton.edu:~/tpu_build/adroit_upload/tpu_top_wrapper_verified.bit build/
+
+# ============================================================================
+# STEP 8: Program and Test (Run from Mac)
+# ============================================================================
+openFPGALoader -b basys3 build/tpu_top_wrapper_verified.bit
+python3 python/test_uart_basic.py /dev/tty.usbserial-XXXXX
+

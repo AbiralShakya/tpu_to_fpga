@@ -1,0 +1,100 @@
+================================================================================
+ADROIT VIVADO GUI - QUICK START
+================================================================================
+
+STEP 1: UPLOAD PACKAGE (From Mac)
+----------------------------------
+scp tpu_vivado_package.tar.gz YOUR_NETID@adroit.princeton.edu:~/tpu_build/
+
+Replace YOUR_NETID with your Princeton NetID!
+
+
+STEP 2: EXTRACT ON ADROIT
+--------------------------
+ssh YOUR_NETID@adroit.princeton.edu
+cd ~/tpu_build
+tar -xzf tpu_vivado_package.tar.gz
+cd adroit_upload
+
+
+STEP 3: SETUP X11 FORWARDING (On Mac)
+--------------------------------------
+# Install XQuartz if needed
+brew install --cask xquartz
+
+# Start XQuartz
+open -a XQuartz
+
+# In XQuartz: Preferences → Security → Allow connections from network clients
+# Restart XQuartz
+
+# SSH with X11 forwarding
+ssh -X YOUR_NETID@adroit.princeton.edu
+
+
+STEP 4: LAUNCH VIVADO GUI (On Adroit)
+--------------------------------------
+module load vivado/2023.1
+vivado &
+
+# Wait 30-60 seconds for GUI to open in XQuartz window
+
+
+STEP 5: BUILD IN GUI
+--------------------
+1. File → New Project
+2. Name: tpu_basys3
+3. Type: RTL Project
+4. Part: xc7a35tcpg236-1 (Basys 3)
+5. Add Sources → Add tpu_basys3.edif
+6. Add Constraints → Add basys3_nextpnr.xdc
+7. Set Top: tpu_top_wrapper
+8. Generate Bitstream
+9. Wait 15-35 minutes
+
+
+STEP 6: DOWNLOAD BITSTREAM (From Mac)
+--------------------------------------
+scp YOUR_NETID@adroit.princeton.edu:~/tpu_build/adroit_upload/tpu_basys3.runs/impl_1/tpu_top_wrapper.bit build/
+
+
+STEP 7: PROGRAM FPGA (On Mac)
+------------------------------
+openFPGALoader -b basys3 build/tpu_top_wrapper.bit
+
+
+================================================================================
+ALTERNATIVE: AUTOMATED BUILD (No GUI)
+================================================================================
+
+On Adroit:
+module load vivado/2023.1
+cd ~/tpu_build/adroit_upload
+vivado -mode batch -source build_tpu_vivado.tcl
+
+Output: build/tpu_top_wrapper.bit
+
+================================================================================
+FILES IN PACKAGE (102 KB total)
+================================================================================
+- tpu_basys3.edif (1.4 MB) - Synthesized netlist
+- basys3_nextpnr.xdc (6 KB) - Constraints
+- build_tpu_vivado.tcl (2 KB) - Build script
+- README.txt - Instructions
+
+================================================================================
+TROUBLESHOOTING
+================================================================================
+
+X11 not working?
+  ssh -Y YOUR_NETID@adroit.princeton.edu  (more permissive)
+  Check: echo $DISPLAY  (should show localhost:10.0)
+
+Vivado module not found?
+  module avail vivado
+  module load vivado/2022.1  (try different version)
+
+See ADROIT_VIVADO_GUI_GUIDE.md for detailed instructions.
+
+================================================================================
+
