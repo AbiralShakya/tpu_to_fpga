@@ -358,24 +358,42 @@ class TPU_Coprocessor:
             bool: True if streaming mode enabled successfully
         """
         try:
+            # #region agent log
+            import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:353','message':'enable_stream_mode called','data':{'current_stream_mode':self._stream_mode,'bytes_in_waiting':self.ser.in_waiting if self.ser else -1},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'E'})+'\n')
+            # #endregion
             # Send stream mode command
             self._send_command(UARTCommand.STREAM_INSTR)
+            # #region agent log
+            import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:362','message':'Sent STREAM_INSTR command','data':{'command':UARTCommand.STREAM_INSTR,'bytes_sent':self.stats['bytes_sent']},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'E'})+'\n')
+            # #endregion
             
             # Read response: 0x00=ready, 0xFF=not ready, 0x01=buffer select
             response = self._read_response(1)
+            # #region agent log
+            import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:369','message':'Received stream mode response','data':{'response_len':len(response),'response_hex':response.hex() if response else 'empty','status_byte':response[0] if response else None},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'E'})+'\n')
+            # #endregion
             if len(response) == 0:
                 if self.verbose:
                     print("⚠ No response from FPGA")
+                # #region agent log
+                import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:377','message':'Empty response from enable_stream_mode','data':{'timeout':self.timeout},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'E'})+'\n')
+                # #endregion
                 return False
             
             status = response[0]
             if status == 0xFF:
                 if self.verbose:
                     print("✗ FPGA not ready for streaming")
+                # #region agent log
+                import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:387','message':'FPGA not ready','data':{'status':status},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'E'})+'\n')
+                # #endregion
                 return False
             
             self._stream_mode = True
             self._stream_buffer_sel = status & 0x01  # Extract buffer select
+            # #region agent log
+            import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:396','message':'Streaming mode enabled successfully','data':{'buffer_sel':self._stream_buffer_sel,'status':status},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'E'})+'\n')
+            # #endregion
             
             if self.verbose:
                 print(f"✓ Streaming mode enabled (active buffer: {self._stream_buffer_sel})")
@@ -385,6 +403,9 @@ class TPU_Coprocessor:
             if self.verbose:
                 print(f"✗ Failed to enable streaming mode: {e}")
             self.stats['errors'] += 1
+            # #region agent log
+            import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:410','message':'Exception in enable_stream_mode','data':{'error':str(e)},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'E'})+'\n')
+            # #endregion
             return False
     
     def disable_stream_mode(self) -> None:
@@ -393,41 +414,70 @@ class TPU_Coprocessor:
         if self.verbose:
             print("✓ Streaming mode disabled")
     
-    def stream_instruction(self, opcode: Union[int, Opcode], arg1: int, arg2: int, 
-                          arg3: int, flags: int = 0, retry: bool = True) -> bool:
+    def stream_instruction(self, opcode: Union[int, Opcode, Instruction], arg1: int = None, arg2: int = None, 
+                          arg3: int = None, flags: int = 0, retry: bool = True) -> bool:
         """
         Stream single 32-bit instruction to FPGA (double-buffered mode)
         
         Args:
-            opcode: 6-bit opcode or Opcode enum
-            arg1, arg2, arg3: 8-bit arguments
+            opcode: 6-bit opcode, Opcode enum, or Instruction object
+            arg1, arg2, arg3: 8-bit arguments (optional if opcode is Instruction)
             flags: 2-bit flags
             retry: Retry if buffer full
         
         Returns:
             bool: True if instruction accepted, False if buffer full
         """
+        # #region agent log
+        import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:396','message':'stream_instruction called','data':{'opcode_type':type(opcode).__name__,'opcode_value':str(opcode),'arg1':arg1,'arg2':arg2,'arg3':arg3,'flags':flags,'stream_mode':self._stream_mode,'retry':retry},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'C'})+'\n')
+        # #endregion
+        
         if not self._stream_mode:
             raise RuntimeError("Streaming mode not enabled. Call enable_stream_mode() first.")
         
-        if isinstance(opcode, Opcode):
-            opcode = opcode.value
-        
-        instr = Instruction(opcode, arg1, arg2, arg3, flags)
+        # Support both Instruction object and individual parameters (Hypothesis C)
+        if isinstance(opcode, Instruction):
+            instr = opcode
+            # #region agent log
+            import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:416','message':'Using Instruction object','data':{'opcode':instr.opcode,'arg1':instr.arg1,'arg2':instr.arg2,'arg3':instr.arg3,'flags':instr.flags},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'C'})+'\n')
+            # #endregion
+        else:
+            if isinstance(opcode, Opcode):
+                opcode = opcode.value
+            instr = Instruction(opcode, arg1, arg2, arg3, flags)
+            # #region agent log
+            import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:426','message':'Created Instruction from params','data':{'opcode':opcode,'arg1':arg1,'arg2':arg2,'arg3':arg3,'flags':flags},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'C'})+'\n')
+            # #endregion
         
         # Send instruction (4 bytes, big-endian)
-        self.ser.write(instr.to_bytes())
+        instr_bytes = instr.to_bytes()
+        # #region agent log
+        import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:435','message':'Sending instruction bytes','data':{'instr_bytes':instr_bytes.hex(),'bytes_in_waiting_before':self.ser.in_waiting if self.ser else -1},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'A,B'})+'\n')
+        # #endregion
+        self.ser.write(instr_bytes)
         self.stats['bytes_sent'] += 4
         
         # Read acknowledgment: 0x00=accepted, 0xFF=full, 0x01=buffer swapped
+        # #region agent log
+        import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:445','message':'About to read ACK','data':{'bytes_in_waiting':self.ser.in_waiting if self.ser else -1,'timeout':self.timeout},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'B,D'})+'\n')
+        # #endregion
         response = self._read_response(1)
+        # #region agent log
+        import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:451','message':'Received ACK response','data':{'response_len':len(response),'response_hex':response.hex() if response else 'empty','ack_byte':response[0] if response else None},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'A,D'})+'\n')
+        # #endregion
         if len(response) == 0:
             if self.verbose:
                 print("⚠ No acknowledgment from FPGA")
             self.stats['errors'] += 1
+            # #region agent log
+            import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:460','message':'Empty response from FPGA','data':{'stats':self.stats},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'D'})+'\n')
+            # #endregion
             return False
         
         ack = response[0]
+        # #region agent log
+        import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:467','message':'Processing ACK byte','data':{'ack':ack,'ack_hex':hex(ack),'expected_codes':{'accepted':'0x00','full':'0xff','swapped':'0x01'}},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'A'})+'\n')
+        # #endregion
         
         if ack == 0x00:
             # Instruction accepted
@@ -436,13 +486,23 @@ class TPU_Coprocessor:
         
         elif ack == 0xFF:
             # Buffer full - backpressure
+            # #region agent log
+            import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:481','message':'Buffer full - backpressure','data':{'retry':retry,'instr':str(instr)},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'B'})+'\n')
+            # #endregion
             if self.verbose:
                 print(f"⚠ Buffer full, instruction not accepted: {instr}")
             
             if retry:
                 # Wait and retry
                 time.sleep(0.01)
-                return self.stream_instruction(opcode, arg1, arg2, arg3, flags, retry=False)
+                # #region agent log
+                import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:492','message':'Retrying after backpressure','data':{'sleep_time_ms':10},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'B'})+'\n')
+                # #endregion
+                # Need to pass Instruction object for retry
+                if isinstance(opcode, Instruction):
+                    return self.stream_instruction(opcode, retry=False)
+                else:
+                    return self.stream_instruction(opcode, arg1, arg2, arg3, flags, retry=False)
             
             return False
         
@@ -455,6 +515,9 @@ class TPU_Coprocessor:
             return True
         
         else:
+            # #region agent log
+            import json,time;open('/Users/alanma/Downloads/tpu_to_fpga/.cursor/debug.log','a').write(json.dumps({'location':'tpu_coprocessor_driver.py:514','message':'Unexpected ACK byte','data':{'ack':ack,'ack_hex':hex(ack),'bytes_in_waiting_after':self.ser.in_waiting if self.ser else -1,'instr':str(instr)},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'A,B'})+'\n')
+            # #endregion
             if self.verbose:
                 print(f"⚠ Unexpected acknowledgment: 0x{ack:02X}")
             self.stats['errors'] += 1
