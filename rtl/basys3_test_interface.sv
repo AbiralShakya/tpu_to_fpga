@@ -227,19 +227,25 @@ always_comb begin
 end
 
 // ============================================================================
-// LED STATUS DISPLAY
+// LED STATUS DISPLAY (Multiplexed: UART Debug vs Physical Mode)
 // ============================================================================
 
 always_comb begin
-    case (current_mode)
-        MODE_IDLE:    led = {12'b000000000000, sys_busy, vpu_busy, ub_busy, 1'b0};
-        MODE_INSTR:   led = {8'b00001111, sw[7:0]};
-        MODE_DATA:    led = sw;
-        MODE_WEIGHT:  led = {8'b11110000, sw[7:0]};
-        MODE_EXECUTE: led = {12'b101010101010, sys_busy, vpu_busy, ub_busy, 1'b0};
-        MODE_RESULTS: led = ub_rd_data[15:0];
-        default:      led = 16'b1010101010101010;
-    endcase
+    if (uart_active) begin
+        // UART Debug Mode: Show UART state and byte count
+        led = {uart_debug_byte_count[7:0], uart_debug_state[7:0]};
+    end else begin
+        // Physical Mode: Show mode-specific status
+        case (current_mode)
+            MODE_IDLE:    led = {12'b000000000000, sys_busy, vpu_busy, ub_busy, 1'b0};
+            MODE_INSTR:   led = {8'b00001111, sw[7:0]};
+            MODE_DATA:    led = sw;
+            MODE_WEIGHT:  led = {8'b11110000, sw[7:0]};
+            MODE_EXECUTE: led = {12'b101010101010, sys_busy, vpu_busy, ub_busy, 1'b0};
+            MODE_RESULTS: led = ub_rd_data[15:0];
+            default:      led = 16'b1010101010101010;
+        endcase
+    end
 end
 
 // ============================================================================
@@ -346,6 +352,11 @@ logic [4:0] uart_instr_wr_addr;
 logic [31:0] uart_instr_wr_data;
 logic uart_start_execution;
 
+// UART Debug signals
+logic [7:0] uart_debug_state;
+logic [7:0] uart_debug_cmd;
+logic [15:0] uart_debug_byte_count;
+
 // Instantiate standard UART DMA module (complete implementation)
 uart_dma_basys3 uart_dma (
     .clk(clk),
@@ -371,9 +382,9 @@ uart_dma_basys3 uart_dma (
     .vpu_done(vpu_done),
     .ub_busy(ub_busy),
     .ub_done(ub_done),
-    .debug_state(),
-    .debug_cmd(),
-    .debug_byte_count()
+    .debug_state(uart_debug_state),
+    .debug_cmd(uart_debug_cmd),
+    .debug_byte_count(uart_debug_byte_count)
 );
 
 // Multiplex between UART DMA and physical interface
