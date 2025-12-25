@@ -72,17 +72,17 @@ report_route_status
 # Check that all nets are routed (no unplaced/unrouted)
 
 # Generate bitstream
-write_bitstream -force tpu_top_wrapper_verified.bit
+write_bitstream -force tpu_top_wrapper_verified_rev3.bit
 ```
 
 ### Step 4: Download and Test
 
 ```bash
 # Download from Adroit
-scp as0714@adroit.princeton.edu:~/tpu_build/adroit_upload/tpu_top_wrapper_verified.bit build/
+scp as0714@adroit.princeton.edu:~/tpu_build/adroit_upload/tpu_top_wrapper_verified_rev3.bit build/
 
 # Program FPGA
-openFPGALoader -b basys3 build/tpu_top_wrapper_verified.bit
+openFPGALoader -b basys3 build/tpu_top_wrapper_verified_rev3.bit
 
 # Test basic connectivity
 python3 python/test_uart_basic.py /dev/tty.usbserial-XXXXX

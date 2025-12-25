@@ -3,7 +3,7 @@
 module unified_buffer #(
     parameter DATA_WIDTH = 256,  // 256-bit wide for burst transfers
     parameter DEPTH = 128,       // 128 entries per bank = 32 KiB per bank (total 64 KiB)
-    parameter ADDR_WIDTH = 7     // log2(DEPTH) per bank
+    parameter ADDR_WIDTH = 8     // 8 bits for address (includes bank select bit)
 )(
     input  wire                     clk,
     input  wire                     rst_n,
@@ -11,14 +11,14 @@ module unified_buffer #(
 
     // Unified Read/Write Interface (alternates per clock cycle)
     input  wire                     ub_rd_en,
-    input  wire [ADDR_WIDTH:0]      ub_rd_addr,     // +1 bit for bank selection
-    input  wire [ADDR_WIDTH:0]      ub_rd_count,    // Burst count
+    input  wire [ADDR_WIDTH:0]      ub_rd_addr,     // 9-bit: [8]=bank, [7:0]=address
+    input  wire [ADDR_WIDTH:0]      ub_rd_count,    // 9-bit burst count
     output reg [DATA_WIDTH-1:0]     ub_rd_data,
     output reg                      ub_rd_valid,
 
     input  wire                     ub_wr_en,
-    input  wire [ADDR_WIDTH:0]      ub_wr_addr,     // +1 bit for bank selection
-    input  wire [ADDR_WIDTH:0]      ub_wr_count,    // Burst count
+    input  wire [ADDR_WIDTH:0]      ub_wr_addr,     // 9-bit: [8]=bank, [7:0]=address
+    input  wire [ADDR_WIDTH:0]      ub_wr_count,    // 9-bit burst count
     input  wire [DATA_WIDTH-1:0]    ub_wr_data,
     output reg                      ub_wr_ready,
 
@@ -69,7 +69,7 @@ always @* begin
     wr_bank_sel = ~ub_buf_sel; // Current write bank (opposite)
 end
 
-always @(posedge clk or negedge rst_n) begin
+always @(posedge clk) begin
     if (!rst_n) begin
         rd_state <= RD_IDLE;
         rd_burst_count <= {(ADDR_WIDTH+1){1'b0}};
@@ -133,7 +133,7 @@ end
 // DOUBLE-BUFFERED WRITE LOGIC
 // =============================================================================
 
-always @(posedge clk or negedge rst_n) begin
+always @(posedge clk) begin
     if (!rst_n) begin
         wr_state <= WR_IDLE;
         wr_burst_count <= {(ADDR_WIDTH+1){1'b0}};

@@ -1,4 +1,4 @@
-# Setup and Test with New Bitstream (tpu_top_wrapper_rev2.bit)
+# Setup and Test with New Bitstream (tpu_top_wrapper_verified_rev3.bit)
 
 ## Current Issue
 
@@ -11,7 +11,7 @@ The logs show:
 
 ## Solution: Use New Bitstream
 
-You have `tpu_top_wrapper_rev2.bit` which should have:
+You have `tpu_top_wrapper_verified_rev3.bit` which should have:
 - ✅ `uart_dma_basys3_improved` properly instantiated
 - ✅ Streaming mode support (command 0x07)
 - ✅ Improved UART RX with oversampling
@@ -29,7 +29,7 @@ This will confirm if FPGA is responding at all.
 
 ```bash
 # Program the new bitstream with streaming mode
-openFPGALoader -b basys3 build/tpu_top_wrapper_rev2.bit
+openFPGALoader -b basys3 build/tpu_top_wrapper_verified_rev3.bit
 ```
 
 ## Step 3: Test Basic Connectivity
@@ -68,13 +68,13 @@ python3 python/test_isa_legacy_verified.py /dev/tty.usbserial-XXXXX
 
 1. **Check bitstream file**:
    ```bash
-   ls -lh build/tpu_top_wrapper_rev2.bit
+   ls -lh build/tpu_top_wrapper_verified_rev3.bit
    ```
    Should be ~2-3 MB (not empty)
 
 2. **Verify programming**:
    ```bash
-   openFPGALoader -b basys3 -v build/tpu_top_wrapper_rev2.bit
+   openFPGALoader -b basys3 -v build/tpu_top_wrapper_verified_rev3.bit
    ```
    Should show "Done" message
 
@@ -99,7 +99,7 @@ Great! The issue was the old bitstream. Now you can:
 
 ```bash
 # 1. Program new bitstream
-openFPGALoader -b basys3 build/tpu_top_wrapper_rev2.bit
+openFPGALoader -b basys3 build/tpu_top_wrapper_verified_rev3.bit
 
 # 2. Test basic connectivity
 python3 python/test_uart_basic.py /dev/tty.usbserial-XXXXX

@@ -7,7 +7,7 @@ set project_dir "vivado/${project_name}"
 set part_name "xc7a35tcpg236-1"
 set top_module "tpu_top_wrapper"
 set edif_file "build/tpu_basys3.edif"
-set xdc_file "constraints/basys3_nextpnr.xdc"
+set xdc_file "constraints/basys3_vivado.xdc"
 
 # Get current working directory
 set proj_dir [pwd]

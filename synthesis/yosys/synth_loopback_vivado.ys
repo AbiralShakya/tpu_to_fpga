@@ -1,0 +1,29 @@
+# Yosys synthesis script for UART LOOPBACK TEST
+# This is a minimal design to test if UART works at all
+
+# Read source files
+read_verilog -sv rtl/uart_loopback_test.sv
+read_verilog -sv rtl/uart_rx.sv
+read_verilog -sv rtl/uart_tx.sv
+
+# Read Xilinx primitives
+read_verilog xilinx_primitives.v
+
+# Hierarchy
+hierarchy -check
+hierarchy -top uart_loopback_test
+
+# Convert processes
+proc
+
+# Synthesis (don't flatten to preserve hierarchy)
+synth_xilinx -abc9 -arch xc7 -top uart_loopback_test
+
+# Write EDIF for Vivado
+write_edif -pvector bra -attrprop build/uart_loopback.edif
+
+# Write JSON for nextpnr-xilinx
+write_json build/uart_loopback.json
+
+# Stats
+stat

@@ -27,7 +27,7 @@ read_verilog -sv rtl/basys3_test_interface.sv
 read_verilog -sv rtl/uart_rx.sv
 read_verilog -sv rtl/uart_rx_improved.sv
 read_verilog -sv rtl/uart_tx.sv
-read_verilog -sv rtl/uart_dma_basys3_improved.sv
+read_verilog -sv rtl/uart_dma_basys3.sv
 
 # Read Xilinx primitives
 read_verilog xilinx_primitives.v
@@ -36,14 +36,25 @@ read_verilog xilinx_primitives.v
 hierarchy -check
 hierarchy -top tpu_top_wrapper
 
+# PREVENT OPTIMIZATION OF TPU CORE - mark critical modules to keep
+# This ensures the datapath, controller, and systolic array are NOT optimized away
+setattr -mod -set keep 1 tpu_top
+setattr -mod -set keep 1 tpu_datapath
+setattr -mod -set keep 1 tpu_controller
+setattr -mod -set keep 1 systolic_controller
+setattr -mod -set keep 1 unified_buffer
+setattr -mod -set keep 1 basys3_test_interface
+setattr -mod -set keep 1 uart_dma_basys3
+
 # Convert processes to logic first
 proc
 
 # Force constants into LUTs BEFORE synthesis
 setundef -zero
 
-# Generic synthesis
-synth_xilinx -flatten -abc9 -arch xc7 -top tpu_top_wrapper
+# Generic synthesis - NO FLATTEN to preserve TPU datapath hierarchy
+# Use -nodsp to avoid memory_dff issues with unified buffer
+synth_xilinx -abc9 -arch xc7 -top tpu_top_wrapper -nodsp
 
 # Optimize
 opt -full

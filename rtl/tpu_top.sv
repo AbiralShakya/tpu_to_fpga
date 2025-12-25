@@ -61,6 +61,16 @@ logic [7:0]  sys_acc_addr;
 logic        sys_acc_clear;
 
 // Unified Buffer Control (7 signals)
+// Controller outputs
+logic        ctrl_ub_rd_en;
+logic        ctrl_ub_wr_en;
+logic [8:0]  ctrl_ub_rd_addr;
+logic [8:0]  ctrl_ub_wr_addr;
+logic [8:0]  ctrl_ub_rd_count;
+logic [8:0]  ctrl_ub_wr_count;
+logic        ctrl_ub_buf_sel;
+
+// Multiplexed signals to datapath
 logic        ub_rd_en;
 logic        ub_wr_en;
 logic [8:0]  ub_rd_addr;
@@ -159,6 +169,25 @@ logic        halt_req;         // Internal halt request
 logic        interrupt_en;     // Internal interrupt enable
 
 // =============================================================================
+// INSTRUCTION MEMORY (32 x 32-bit)
+// =============================================================================
+
+logic [7:0]  instr_addr;
+logic [31:0] instr_data;
+
+(* ram_style = "block" *) reg [31:0] instruction_memory [0:31];
+
+// Instruction memory write port (from UART DMA)
+always @(posedge clk) begin
+    if (test_instr_wr_en) begin
+        instruction_memory[test_instr_wr_addr] <= test_instr_wr_data;
+    end
+end
+
+// Instruction memory read port (to controller) - combinational read
+assign instr_data = instruction_memory[instr_addr[4:0]];
+
+// =============================================================================
 // CONTROLLER INSTANCE
 // =============================================================================
 
@@ -167,8 +196,8 @@ tpu_controller controller (
     .rst_n          (rst_n),
 
     // Instruction interface
-    .instr_addr     (),  // Not used with UART DMA
-    .instr_data     (32'h00000000),  // Controller uses internal program when UART triggers execution
+    .instr_addr     (instr_addr),
+    .instr_data     (instr_data),
 
     // Status inputs from datapath
     .sys_busy       (sys_busy),
@@ -189,14 +218,14 @@ tpu_controller controller (
     .sys_acc_addr  (sys_acc_addr),
     .sys_acc_clear (sys_acc_clear),
 
-    // Unified Buffer Control
-    .ub_rd_en      (ub_rd_en),
-    .ub_wr_en      (ub_wr_en),
-    .ub_rd_addr    (ub_rd_addr),
-    .ub_wr_addr    (ub_wr_addr),
-    .ub_rd_count   (ub_rd_count),
-    .ub_wr_count   (ub_wr_count),
-    .ub_buf_sel    (ub_buf_sel),
+    // Unified Buffer Control (from controller)
+    .ub_rd_en      (ctrl_ub_rd_en),
+    .ub_wr_en      (ctrl_ub_wr_en),
+    .ub_rd_addr    (ctrl_ub_rd_addr),
+    .ub_wr_addr    (ctrl_ub_wr_addr),
+    .ub_rd_count   (ctrl_ub_rd_count),
+    .ub_wr_count   (ctrl_ub_wr_count),
+    .ub_buf_sel    (ctrl_ub_buf_sel),
 
     // Weight FIFO Control
     .wt_mem_rd_en  (wt_mem_rd_en),
@@ -375,15 +404,20 @@ tpu_datapath datapath (
 // DMA INTERFACE LOGIC (UART takes priority over legacy DMA)
 // =============================================================================
 
-// Multiplex between TEST INTERFACE and legacy DMA
-// TEST INTERFACE takes priority when active
+// Multiplex between TEST INTERFACE and CONTROLLER
+// TEST INTERFACE takes priority when active (for programming)
 logic use_test_interface;
 assign use_test_interface = test_ub_wr_en | test_ub_rd_en | test_wt_wr_en | test_instr_wr_en;
 
-// Unified Buffer connections (TEST INTERFACE takes priority)
-assign ub_wr_data = use_test_interface ? test_ub_wr_data : dma_data_in;
-assign ub_wr_en = use_test_interface ? test_ub_wr_en : 1'b0;  // TEST INTERFACE controls write enable
-assign ub_rd_en = use_test_interface ? test_ub_rd_en : 1'b0;  // TEST INTERFACE controls read enable
+// Unified Buffer connections (TEST INTERFACE takes priority for programming, otherwise CONTROLLER)
+assign ub_wr_data = use_test_interface ? {test_ub_wr_data[255:0]} : dma_data_in;
+assign ub_wr_en = use_test_interface ? test_ub_wr_en : ctrl_ub_wr_en;
+assign ub_rd_en = use_test_interface ? test_ub_rd_en : ctrl_ub_rd_en;
+assign ub_wr_addr = use_test_interface ? {1'b0, test_ub_wr_addr} : ctrl_ub_wr_addr;
+assign ub_rd_addr = use_test_interface ? {1'b0, test_ub_rd_addr} : ctrl_ub_rd_addr;
+assign ub_wr_count = use_test_interface ? 9'd1 : ctrl_ub_wr_count;
+assign ub_rd_count = use_test_interface ? 9'd1 : ctrl_ub_rd_count;
+assign ub_buf_sel = use_test_interface ? 1'b0 : ctrl_ub_buf_sel;
 
 // Weight FIFO data (from TEST INTERFACE or legacy DMA)
 assign wt_fifo_data = use_test_interface ? test_wt_wr_data[15:0] : dma_data_in[15:0];

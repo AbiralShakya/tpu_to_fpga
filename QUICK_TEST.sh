@@ -11,21 +11,35 @@ echo "TPU ISA Testing - Quick Start"
 echo "=========================================="
 echo ""
 
-# Step 1: Download bitstream
-echo "Step 1: Downloading bitstream from Adroit..."
-if [ ! -f "build/tpu_top_wrapper.bit" ]; then
-    echo "Downloading from Adroit..."
-    scp as0714@adroit.princeton.edu:~/tpu_build/adroit_upload/tpu_top_wrapper.bit build/
-    echo "✓ Downloaded"
+# Step 1: Check for bitstream
+echo "Step 1: Checking for bitstream..."
+BITSTREAM="build/tpu_top_wrapper_verified_rev3.bit"
+if [ ! -f "$BITSTREAM" ]; then
+    echo "⚠ Bitstream not found: $BITSTREAM"
+    echo "  Looking for alternative bitstreams..."
+    if [ -f "build/tpu_top_wrapper_verified.bit" ]; then
+        BITSTREAM="build/tpu_top_wrapper_verified.bit"
+        echo "✓ Found: $BITSTREAM"
+    elif [ -f "build/tpu_top_wrapper_rev2.bit" ]; then
+        BITSTREAM="build/tpu_top_wrapper_rev2.bit"
+        echo "✓ Found: $BITSTREAM"
+    elif [ -f "build/tpu_top_wrapper.bit" ]; then
+        BITSTREAM="build/tpu_top_wrapper.bit"
+        echo "✓ Found: $BITSTREAM"
+    else
+        echo "✗ No bitstream found!"
+        echo "  Download from Adroit or build one first"
+        exit 1
+    fi
 else
-    echo "✓ Bitstream already exists: build/tpu_top_wrapper.bit"
+    echo "✓ Bitstream found: $BITSTREAM"
 fi
 
 # Step 2: Program FPGA
 echo ""
 echo "Step 2: Programming FPGA..."
 if command -v openFPGALoader &> /dev/null; then
-    openFPGALoader -b basys3 build/tpu_top_wrapper.bit
+    openFPGALoader -b basys3 "$BITSTREAM"
     echo "✓ FPGA programmed"
 else
     echo "⚠ openFPGALoader not found - skipping programming"

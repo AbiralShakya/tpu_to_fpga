@@ -61,16 +61,16 @@ report_route_status
 # ============================================================================
 # STEP 6: Generate Bitstream
 # ============================================================================
-write_bitstream -force tpu_top_wrapper_verified.bit
+write_bitstream -force tpu_top_wrapper_verified_rev3.bit
 
 # ============================================================================
 # STEP 7: Download (Run from Mac)
 # ============================================================================
-scp as0714@adroit.princeton.edu:~/tpu_build/adroit_upload/tpu_top_wrapper_verified.bit build/
+scp as0714@adroit.princeton.edu:~/tpu_build/adroit_upload/tpu_top_wrapper_verified_rev3.bit build/
 
 # ============================================================================
 # STEP 8: Program and Test (Run from Mac)
 # ============================================================================
-openFPGALoader -b basys3 build/tpu_top_wrapper_verified.bit
+openFPGALoader -b basys3 build/tpu_top_wrapper_verified_rev3.bit
 python3 python/test_uart_basic.py /dev/tty.usbserial-XXXXX
 

@@ -1,0 +1,41 @@
+# Simplified Yosys synthesis script for TPU on Basys3 (for Vivado P&R)
+
+# Read all source files
+read_verilog -sv rtl/tpu_top_wrapper.sv
+read_verilog -sv rtl/tpu_top.sv
+read_verilog -sv rtl/tpu_datapath.sv
+read_verilog -sv rtl/tpu_controller.sv
+read_verilog -sv rtl/systolic_array.sv
+read_verilog -sv rtl/systolic_controller.sv
+read_verilog -sv rtl/processing_element.sv
+read_verilog -sv rtl/unified_buffer.sv
+read_verilog -sv rtl/weight_fifo.sv
+read_verilog -sv rtl/accumulator.sv
+read_verilog -sv rtl/vector_processing_unit.sv
+read_verilog -sv rtl/basys3_test_interface.sv
+read_verilog -sv rtl/uart_dma_basys3.sv
+read_verilog -sv rtl/uart_rx.sv
+read_verilog -sv rtl/uart_tx.sv
+
+# Read Xilinx primitives
+read_verilog xilinx_primitives.v
+
+# Hierarchy
+hierarchy -check -top tpu_top_wrapper
+
+# Convert processes
+proc
+
+# Generic synthesis using synth command
+synth -top tpu_top_wrapper
+
+# Map to Xilinx primitives
+dfflibmap -liberty +/xilinx/cells_xtra.v
+abc -liberty +/xilinx/cells_xtra.v
+clean
+
+# Write EDIF for Vivado
+write_edif -pvector bra -attrprop build/tpu_basys3.edif
+
+# Print statistics
+stat

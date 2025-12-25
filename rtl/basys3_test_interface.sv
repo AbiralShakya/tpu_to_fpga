@@ -251,61 +251,39 @@ logic [7:0]  program_counter;
 logic [255:0] current_data;
 logic [63:0]  current_weight;
 
-// Instruction programming
+// Instruction programming (internal state only - outputs driven by assign statements)
 always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         current_instruction <= 32'b0;
         program_counter <= 8'b0;
-        instr_wr_en <= 1'b0;
     end else begin
-        instr_wr_en <= 1'b0;
-
         if (current_mode == MODE_INSTR && btn_press[0]) begin  // BTNC - program instruction
             // Build instruction from switches
             // sw[15:12] = opcode, sw[11:8] = ARG1, sw[7:4] = ARG2, sw[3:0] = ARG3
             current_instruction <= {6'b000000, sw[15:12], sw[11:8], sw[7:4], sw[3:0], 2'b00};
-
-            instr_wr_en <= 1'b1;
-            instr_wr_addr <= program_counter[4:0];
-            instr_wr_data <= {6'b000000, sw[15:12], sw[11:8], sw[7:4], sw[3:0], 2'b00};
-
             program_counter <= program_counter + 1;
         end
     end
 end
 
-// Data programming (UB)
+// Data programming (UB) - internal state only - outputs driven by assign statements
 always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         current_data <= 256'b0;
-        ub_wr_en <= 1'b0;
     end else begin
-        ub_wr_en <= 1'b0;
-
         if (current_mode == MODE_DATA && btn_press[0]) begin  // BTNC - program data
             current_data <= {240'b0, sw};  // Use switches as 16-bit data
-
-            ub_wr_en <= 1'b1;
-            ub_wr_addr <= sw[15:8];  // Use upper switches as address
-            ub_wr_data <= {240'b0, sw};  // Use switches as data
         end
     end
 end
 
-// Weight programming
+// Weight programming - internal state only - outputs driven by assign statements
 always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         current_weight <= 64'b0;
-        wt_wr_en <= 1'b0;
     end else begin
-        wt_wr_en <= 1'b0;
-
         if (current_mode == MODE_WEIGHT && btn_press[0]) begin  // BTNC - program weight
             current_weight <= {48'b0, sw};  // Use switches as 16-bit weight
-
-            wt_wr_en <= 1'b1;
-            wt_wr_addr <= sw[15:6];  // Use upper switches as address
-            wt_wr_data <= {48'b0, sw};  // Use switches as weight data
         end
     end
 end
@@ -368,8 +346,8 @@ logic [4:0] uart_instr_wr_addr;
 logic [31:0] uart_instr_wr_data;
 logic uart_start_execution;
 
-// Instantiate improved UART DMA module
-uart_dma_basys3_improved uart_dma (
+// Instantiate standard UART DMA module (complete implementation)
+uart_dma_basys3 uart_dma (
     .clk(clk),
     .rst_n(rst_n),
     .uart_rx(uart_rx),
