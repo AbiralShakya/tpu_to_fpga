@@ -40,7 +40,7 @@ print(f"  ✓ Wrote {len(matrix_data)} bytes")
 # Step 2: Write weights (same identity matrix)
 print("\nStep 2: Writing weights to Weight Memory (address 0x0000)...")
 weight_data = bytes([
-    1, 0, 0, 0, 1, 0, 0, 0  # First 8 bytes
+    1, 1,1,1,1,1,1,1,  # First 8 bytes
 ])
 cmd = bytes([
     0x02,        # WRITE_WEIGHT

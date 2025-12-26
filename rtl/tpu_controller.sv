@@ -3,6 +3,7 @@
 module tpu_controller (
     input  wire        clk,
     input  wire        rst_n,
+    input  wire        start_execution, // Start program execution
 
     // Instruction memory interface
     output wire [7:0]  instr_addr,     // Instruction address to memory
@@ -13,6 +14,7 @@ module tpu_controller (
     input  wire        vpu_busy,
     input  wire        dma_busy,
     input  wire        wt_busy,        // Weight FIFO busy
+    input  wire        ub_busy,        // Unified buffer busy (for buffer toggle safety)
 
     // =============================================================================
     // CONTROL OUTPUTS TO DATAPATH (46 signals total)
@@ -282,20 +284,26 @@ end
 // BUFFER STATE REGISTERS (updated only on SYNC execution)
 // =============================================================================
 
+// Buffer toggle safety: Only toggle when no operations are active on buffers
+// This prevents corruption from toggling buffers mid-operation
+wire buffers_idle;
+assign buffers_idle = !ub_busy && !wt_busy;  // Both unified buffer and weight FIFO must be idle
+
 always @ (posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         wt_buf_sel_reg  <= 1'b0;
         acc_buf_sel_reg <= 1'b0;
         ub_buf_sel_reg  <= 1'b0;
-    end else if (exec_valid && (exec_opcode == SYNC_OP)) begin
-        // Only update buffer state when SYNC instruction executes
+    end else if (exec_valid && (exec_opcode == SYNC_OP) && buffers_idle) begin
+        // Only update buffer state when SYNC instruction executes AND buffers are idle
         // This ensures proper pipelining - instructions already in pipeline
         // use their captured buffer state, only future instructions see new state
+        // CRITICAL: Wait for buffers to be idle to prevent data corruption
         wt_buf_sel_reg  <= ~wt_buf_sel_reg;
         acc_buf_sel_reg <= ~acc_buf_sel_reg;
         ub_buf_sel_reg  <= ~ub_buf_sel_reg;
     end
-    // Otherwise hold current state
+    // Otherwise hold current state (including if buffers are busy)
 end
 
 // =============================================================================

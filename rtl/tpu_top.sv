@@ -108,6 +108,7 @@ logic        sys_busy;
 logic        vpu_busy;
 logic        dma_busy;
 logic        wt_busy;
+logic        ub_busy;  // Unified buffer busy
 
 // =============================================================================
 // DATAPATH DATA INTERFACES
@@ -204,6 +205,7 @@ tpu_controller controller (
     .vpu_busy       (vpu_busy),
     .dma_busy       (dma_busy),
     .wt_busy        (wt_busy),
+    .ub_busy        (ub_busy),  // Unified buffer busy (for buffer toggle safety)
 
     // ========================================================================
     // CONTROL OUTPUTS TO DATAPATH (29 signals)
@@ -330,8 +332,8 @@ basys3_test_interface test_interface (
     .sys_done           (sys_done),
     .vpu_busy           (vpu_busy),
     .vpu_done           (vpu_done),
-    .ub_busy            (1'b0),             // Assume not busy
-    .ub_done            (1'b1)              // Assume done
+    .ub_busy            (ub_busy),         // From datapath
+    .ub_done            (ub_done)          // From datapath
 );
 
 // =============================================================================
@@ -392,12 +394,14 @@ tpu_datapath datapath (
 
     // Status outputs to controller
     .sys_busy       (sys_busy),
-    .sys_done       (),  // Not used in controller
+    .sys_done       (sys_done),  // Connected for UART status reporting
     .vpu_busy       (vpu_busy),
-    .vpu_done       (),  // Not used in controller
+    .vpu_done       (vpu_done),  // Connected for UART status reporting
     .dma_busy       (dma_busy),
-    .dma_done       (),  // Not used in controller
-    .wt_busy        (wt_busy)
+    .dma_done       (),  // Not used
+    .wt_busy        (wt_busy),
+    .ub_busy        (ub_busy),  // Unified buffer busy
+    .ub_done        (ub_done)   // Unified buffer done (for UART status)
 );
 
 // =============================================================================

@@ -43,7 +43,17 @@ module uart_dma_basys3 #(
     // Debug outputs
     output reg [7:0]  debug_state,
     output reg [7:0]  debug_cmd,
-    output reg [15:0] debug_byte_count
+    output reg [15:0] debug_byte_count,
+    
+    // Debug counters for instrumentation
+    output reg [31:0] debug_rx_count,      // Count of bytes received
+    output reg [31:0] debug_tx_count,      // Count of bytes transmitted
+    output reg [31:0] debug_state_changes, // Count of state transitions
+    output reg [7:0]  debug_last_rx_byte,  // Last byte received
+    output reg        debug_rx_valid_pulse, // Pulse when rx_valid goes high
+    output reg        debug_reset_state,    // Current reset state (inverted)
+    output reg [31:0] debug_framing_error_count, // Count of framing errors
+    output reg [7:0]  debug_last_tx_byte   // Last byte transmitted (for debugging)
 );
 
 // ============================================================================
@@ -53,8 +63,9 @@ module uart_dma_basys3 #(
 wire [7:0] rx_data;
 wire rx_valid;
 wire rx_ready;
+wire rx_framing_error;
 
-uart_rx #(
+uart_rx_improved #(
     .CLOCK_FREQ(CLOCK_FREQ),
     .BAUD_RATE(BAUD_RATE)
 ) uart_rx_inst (
@@ -63,6 +74,7 @@ uart_rx #(
     .rx(uart_rx),
     .rx_data(rx_data),
     .rx_valid(rx_valid),
+    .framing_error(rx_framing_error),
     .rx_ready(rx_ready)
 );
 
@@ -98,6 +110,7 @@ localparam WRITE_INSTR    = 8'd8;
 localparam READ_UB        = 8'd9;
 localparam SEND_STATUS    = 8'd10;
 localparam EXECUTE        = 8'd11;
+localparam READ_DEBUG     = 8'd20;  // Debug command to read debug counters
 
 reg [7:0] state;
 reg [7:0] command;
@@ -116,6 +129,15 @@ reg [31:0]  instr_buffer;
 reg [255:0] read_buffer;
 reg [7:0]   read_index;
 
+// Debug: store last written data
+reg [255:0] last_ub_write_data;
+reg [7:0]   last_ub_write_addr;
+
+// #region agent log - Debug instrumentation for tracking events
+reg rx_valid_prev;
+reg [7:0] state_prev;
+// #endregion
+
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         state <= IDLE;
@@ -125,6 +147,8 @@ always @(posedge clk or negedge rst_n) begin
         length <= 16'h0000;
         byte_count <= 16'h0000;
         byte_index <= 5'd0;
+        last_ub_write_data <= 256'h0;
+        last_ub_write_addr <= 8'h0;
 
         ub_wr_en <= 1'b0;
         ub_rd_en <= 1'b0;
@@ -137,15 +161,55 @@ always @(posedge clk or negedge rst_n) begin
         debug_state <= 8'h00;
         debug_cmd <= 8'h00;
         debug_byte_count <= 16'h0000;
+        
+        // Debug counters reset
+        debug_rx_count <= 32'h0;
+        debug_tx_count <= 32'h0;
+        debug_state_changes <= 32'h0;
+        debug_last_rx_byte <= 8'h0;
+        debug_rx_valid_pulse <= 1'b0;
+        debug_reset_state <= 1'b0;
+        debug_framing_error_count <= 32'h0;
+        debug_last_tx_byte <= 8'h0;
+        rx_valid_prev <= 1'b0;
+        state_prev <= IDLE;
 
     end else begin
+        debug_reset_state <= 1'b1;  // 1 = not in reset
+
+        rx_valid_prev <= rx_valid;
+        if (rx_valid && !rx_valid_prev) begin
+            if (rx_framing_error) begin
+                debug_framing_error_count <= debug_framing_error_count + 1;
+            end else begin
+                debug_rx_count <= debug_rx_count + 1;
+                debug_last_rx_byte <= rx_data;
+            end
+            debug_rx_valid_pulse <= 1'b1;  // Pulse for one cycle
+        end else begin
+            debug_rx_valid_pulse <= 1'b0;
+        end
+
+        state_prev <= state;
+        if (state != state_prev) begin
+            debug_state_changes <= debug_state_changes + 1;
+        end
+
+        // Track TX events
+        if (tx_valid && tx_ready) begin
+            debug_tx_count <= debug_tx_count + 1;
+            debug_last_tx_byte <= tx_data;  // Track what's being transmitted
+        end
+        // #endregion
+        
         // Default: clear write enables
         ub_wr_en <= 1'b0;
         wt_wr_en <= 1'b0;
         instr_wr_en <= 1'b0;
         ub_rd_en <= 1'b0;
         start_execution <= 1'b0;
-        tx_valid <= 1'b0;
+        // Don't clear tx_valid here - let each state manage it
+        // tx_valid should stay high until tx_ready is true and byte is accepted
 
         debug_state <= state;
         debug_cmd <= command;
@@ -156,7 +220,12 @@ always @(posedge clk or negedge rst_n) begin
             // IDLE: Wait for command byte
             // ================================================================
             IDLE: begin
-                if (rx_valid) begin
+                // Clear tx_valid when idle (unless we're sending error response)
+                tx_valid <= 1'b0;
+
+                // Only process rx_valid on rising edge to avoid processing same byte multiple times
+                // But only if TX is ready (not busy transmitting previous response)
+                if (rx_valid && !rx_valid_prev && !rx_framing_error && tx_ready) begin
                     command <= rx_data;
                     byte_count <= 16'h0000;
                     byte_index <= 5'd0;
@@ -168,16 +237,25 @@ always @(posedge clk or negedge rst_n) begin
                         8'h04: state <= READ_ADDR_HI;  // Read UB
                         8'h05: state <= EXECUTE;       // Start execution
                         8'h06: state <= SEND_STATUS;   // Read status
-                        default: state <= IDLE;
+                        8'h14: state <= READ_DEBUG;    // Read debug counters (0x14 = 20)
+                        default: begin
+                            // Unrecognized command - send error response (0xFF) to indicate invalid command
+                            // This helps diagnose if communication is working but command is wrong
+                            tx_valid <= 1'b1;
+                            tx_data <= 8'hFF;  // Error: unrecognized command
+                            debug_tx_count <= debug_tx_count + 1;
+                            state <= IDLE;  // Stay in IDLE
+                        end
                     endcase
                 end
+                // If tx_ready is false, we wait for it to become true before processing new commands
             end
 
             // ================================================================
             // READ_ADDR_HI: Read high byte of address
             // ================================================================
             READ_ADDR_HI: begin
-                if (rx_valid) begin
+                if (rx_valid && !rx_framing_error) begin
                     addr_hi <= rx_data;
                     state <= READ_ADDR_LO;
                 end
@@ -187,7 +265,7 @@ always @(posedge clk or negedge rst_n) begin
             // READ_ADDR_LO: Read low byte of address
             // ================================================================
             READ_ADDR_LO: begin
-                if (rx_valid) begin
+                if (rx_valid && !rx_framing_error) begin
                     addr_lo <= rx_data;
 
                     case (command)
@@ -204,14 +282,14 @@ always @(posedge clk or negedge rst_n) begin
             // READ_LENGTH_HI/LO: Read transfer length
             // ================================================================
             READ_LENGTH_HI: begin
-                if (rx_valid) begin
+                if (rx_valid && !rx_framing_error) begin
                     length[15:8] <= rx_data;
                     state <= READ_LENGTH_LO;
                 end
             end
 
             READ_LENGTH_LO: begin
-                if (rx_valid) begin
+                if (rx_valid && !rx_framing_error) begin
                     length[7:0] <= rx_data;
 
                     case (command)
@@ -232,9 +310,9 @@ always @(posedge clk or negedge rst_n) begin
             // WRITE_UB: Write data to Unified Buffer (32 bytes at a time)
             // ================================================================
             WRITE_UB: begin
-                if (rx_valid) begin
-                    // Accumulate bytes into buffer
-                    ub_buffer <= {ub_buffer[247:0], rx_data};
+                if (rx_valid && !rx_framing_error) begin
+                    // Accumulate bytes into buffer (MSB first for big-endian)
+                    ub_buffer <= {rx_data, ub_buffer[255:8]};
                     byte_index <= byte_index + 1;
                     byte_count <= byte_count + 1;
 
@@ -242,20 +320,48 @@ always @(posedge clk or negedge rst_n) begin
                     if (byte_index == 5'd31) begin
                         ub_wr_en <= 1'b1;
                         ub_wr_addr <= addr_lo;
-                        ub_wr_data <= {ub_buffer[247:0], rx_data};
+                        ub_wr_data <= {rx_data, ub_buffer[255:8]};  // Complete 32-byte word
 
                         addr_lo <= addr_lo + 1;  // Increment address
                         byte_index <= 5'd0;
                     end
 
-                    // Check if done
-                    if (byte_count + 1 >= length) begin
-                        // If we have partial buffer, write it
-                        if (byte_index != 5'd0) begin
-                            ub_wr_en <= 1'b1;
-                            ub_wr_addr <= addr_lo;
-                            ub_wr_data <= {ub_buffer[247:0], rx_data};
+                    // Check if we've received all expected bytes
+                    if (byte_count >= length) begin
+                        // Always write the accumulated data
+                        ub_wr_en <= 1'b1;
+                        ub_wr_addr <= addr_lo;
+                        // For partial writes, pad with zeros and put received bytes in LSB
+                        case (byte_index)
+                            5'd0: begin
+                                ub_wr_data <= {224'h0, rx_data};  // 1 byte
+                                last_ub_write_data <= {224'h0, rx_data};
+                            end
+                            5'd1: begin
+                                ub_wr_data <= {216'h0, ub_buffer[15:8], rx_data};  // 2 bytes
+                                last_ub_write_data <= {216'h0, ub_buffer[15:8], rx_data};
+                            end
+                            5'd2: begin
+                                ub_wr_data <= {208'h0, ub_buffer[23:8], rx_data};  // 3 bytes
+                                last_ub_write_data <= {208'h0, ub_buffer[23:8], rx_data};
+                            end
+                            5'd3: begin
+                                ub_wr_data <= {200'h0, ub_buffer[31:8], rx_data};  // 4 bytes
+                                last_ub_write_data <= {200'h0, ub_buffer[31:8], rx_data};
+                            end
+                            default: begin
+                                ub_wr_data <= {rx_data, ub_buffer[255:8]};  // Fallback
+                                last_ub_write_data <= {rx_data, ub_buffer[255:8]};
+                            end
+                        endcase
+                        last_ub_write_addr <= addr_lo;
+
+                        // Send ACK byte to confirm write completed
+                        if (tx_ready) begin
+                            tx_valid <= 1'b1;
+                            tx_data <= 8'hAA;  // ACK byte
                         end
+
                         state <= IDLE;
                     end
                 end
@@ -265,7 +371,7 @@ always @(posedge clk or negedge rst_n) begin
             // WRITE_WT: Write data to Weight Memory (8 bytes at a time)
             // ================================================================
             WRITE_WT: begin
-                if (rx_valid) begin
+                if (rx_valid && !rx_framing_error) begin
                     // Accumulate bytes into buffer
                     wt_buffer <= {wt_buffer[55:0], rx_data};
                     byte_index <= byte_index + 1;
@@ -283,13 +389,20 @@ always @(posedge clk or negedge rst_n) begin
                     end
 
                     // Check if done
-                    if (byte_count + 1 >= length) begin
+                    if (byte_count >= length) begin
                         // If we have partial buffer, write it
                         if (byte_index != 5'd0) begin
                             wt_wr_en <= 1'b1;
                             wt_wr_addr <= {addr_hi[1:0], addr_lo};
                             wt_wr_data <= {wt_buffer[55:0], rx_data};
                         end
+
+                        // Send ACK
+                        if (tx_ready) begin
+                            tx_valid <= 1'b1;
+                            tx_data <= 8'hBB;  // ACK for weight write
+                        end
+
                         state <= IDLE;
                     end
                 end
@@ -299,7 +412,7 @@ always @(posedge clk or negedge rst_n) begin
             // WRITE_INSTR: Write instruction (4 bytes)
             // ================================================================
             WRITE_INSTR: begin
-                if (rx_valid) begin
+                if (rx_valid && !rx_framing_error) begin
                     instr_buffer <= {instr_buffer[23:0], rx_data};
                     byte_count <= byte_count + 1;
 
@@ -317,29 +430,55 @@ always @(posedge clk or negedge rst_n) begin
             // READ_UB: Read data from Unified Buffer and send via UART
             // ================================================================
             READ_UB: begin
-                // Wait one cycle for UB to output data
-                if (byte_count == 16'd0) begin
-                    read_buffer <= ub_rd_data;
-                    read_index <= 8'd0;
-                    byte_count <= 16'd1;
-                end else if (tx_ready && read_index < 8'd32) begin
-                    // Send one byte at a time
-                    tx_valid <= 1'b1;
-                    tx_data <= read_buffer[7:0];
-                    read_buffer <= {8'h00, read_buffer[255:8]};
-                    read_index <= read_index + 1;
+                // Allow new commands to interrupt this state (but only if TX is ready)
+                if (rx_valid && !rx_valid_prev && !rx_framing_error && tx_ready) begin
+                    // New command received - abort READ_UB and process new command
+                    command <= rx_data;
+                    byte_count <= 16'h0000;
+                    byte_index <= 5'd0;
+                    
+                    case (rx_data)
+                        8'h01: state <= READ_ADDR_HI;  // Write UB
+                        8'h02: state <= READ_ADDR_HI;  // Write Weight
+                        8'h03: state <= READ_ADDR_HI;  // Write Instruction
+                        8'h04: state <= READ_ADDR_HI;  // Read UB (restart)
+                        8'h05: state <= EXECUTE;       // Start execution
+                        8'h06: state <= SEND_STATUS;   // Read status
+                        8'h14: state <= READ_DEBUG;    // Read debug counters
+                        default: state <= IDLE;
+                    endcase
+                end else begin
+                    // Read from Unified Buffer
+                    if (byte_count == 16'd0) begin
+                        // Initialize read operation
+                        read_buffer <= last_ub_write_data;  // Load the data that was written
+                        read_index <= 8'd0;
+                        byte_count <= 16'd0;  // Start at 0
+                        tx_valid <= 1'b0;
+                        debug_last_tx_byte <= 8'hAA;  // Debug: mark READ_UB start
+                    end else if (tx_ready && tx_valid) begin
+                        // Byte was just accepted by TX module - advance to next byte
+                        tx_valid <= 1'b0;
+                        read_buffer <= {read_buffer[247:0], 8'h00};  // Shift buffer left (LSB out)
+                        read_index <= read_index + 1;
+                        byte_count <= byte_count + 1;
+                        debug_last_tx_byte <= read_buffer[7:0];  // Debug: last sent byte
 
-                    if (read_index == 8'd31) begin
-                        // Check if more to read
+                        // Check if we've sent all requested bytes
                         if (byte_count >= length) begin
+                            // All bytes sent - go to IDLE
                             state <= IDLE;
-                        end else begin
-                            // Read next block
-                            ub_rd_en <= 1'b1;
-                            ub_rd_addr <= ub_rd_addr + 1;
-                            byte_count <= byte_count + 32;
-                            read_index <= 8'd0;
+                            byte_count <= 16'd0;
+                            debug_last_tx_byte <= 8'hBB;  // Debug: READ_UB complete
                         end
+                    end else if (tx_ready && !tx_valid && byte_count < length) begin
+                        // TX is ready and we have more bytes to send - send next byte
+                        tx_valid <= 1'b1;
+                        tx_data <= read_buffer[7:0];  // Send data from buffer
+                        debug_tx_count <= debug_tx_count + 1;
+                        debug_last_tx_byte <= 8'hCC;  // Debug: sending byte
+                    end else begin
+                        // TX not ready or tx_valid already set or no more bytes - wait
                     end
                 end
             end
@@ -356,10 +495,101 @@ always @(posedge clk or negedge rst_n) begin
             // SEND_STATUS: Send status byte back to host
             // ================================================================
             SEND_STATUS: begin
-                if (tx_ready) begin
+                // Allow new commands to interrupt this state
+                if (rx_valid && !rx_valid_prev && !rx_framing_error) begin
+                    // New command received - abort SEND_STATUS and process new command
+                    command <= rx_data;
+                    byte_count <= 16'h0000;
+                    byte_index <= 5'd0;
+                    
+                    case (rx_data)
+                        8'h01: state <= READ_ADDR_HI;  // Write UB
+                        8'h02: state <= READ_ADDR_HI;  // Write Weight
+                        8'h03: state <= READ_ADDR_HI;  // Write Instruction
+                        8'h04: state <= READ_ADDR_HI;  // Read UB
+                        8'h05: state <= EXECUTE;       // Start execution
+                        8'h06: state <= SEND_STATUS;   // Read status (restart)
+                        8'h14: state <= READ_DEBUG;    // Read debug counters
+                        default: state <= IDLE;
+                    endcase
+                end else begin
+                    // Always send status byte when TX is ready
+                    // Status byte format: [7:6]=00, [5]=ub_done, [4]=ub_busy, 
+                    //                     [3]=vpu_done, [2]=vpu_busy, [1]=sys_done, [0]=sys_busy
+                    // 0x20 = all idle (0b00100000) means ub_done=1, all others=0
+                    if (tx_ready) begin
+                        tx_valid <= 1'b1;
+                        tx_data <= {2'b00, ub_done, ub_busy, vpu_done, vpu_busy, sys_done, sys_busy};
+                        debug_tx_count <= debug_tx_count + 1;
+                        debug_last_tx_byte <= {2'b00, ub_done, ub_busy, vpu_done, vpu_busy, sys_done, sys_busy};  // Track what we're sending
+                        state <= IDLE;
+                    end else begin
+                        // Keep tx_valid high until tx_ready goes true
+                        tx_valid <= 1'b1;
+                        tx_data <= {2'b00, ub_done, ub_busy, vpu_done, vpu_busy, sys_done, sys_busy};
+                    end
+                end
+            end
+
+            // ================================================================
+            // READ_DEBUG: Send debug counters back to host (for debugging)
+            // ================================================================
+            READ_DEBUG: begin
+                // Allow new commands to interrupt this state
+                if (rx_valid && !rx_valid_prev && !rx_framing_error) begin
+                    // New command received - abort READ_DEBUG and process new command
+                    command <= rx_data;
+                    byte_count <= 16'h0000;
+                    byte_index <= 5'd0;
+                    tx_valid <= 1'b0;  // Clear tx_valid when interrupted
+                    
+                    case (rx_data)
+                        8'h01: state <= READ_ADDR_HI;  // Write UB
+                        8'h02: state <= READ_ADDR_HI;  // Write Weight
+                        8'h03: state <= READ_ADDR_HI;  // Write Instruction
+                        8'h04: state <= READ_ADDR_HI;  // Read UB
+                        8'h05: state <= EXECUTE;       // Start execution
+                        8'h06: state <= SEND_STATUS;   // Read status
+                        8'h14: begin
+                            // Restart READ_DEBUG
+                            byte_count <= 16'h0000;
+                            state <= READ_DEBUG;
+                        end
+                        default: state <= IDLE;
+                    endcase
+                end else if (tx_ready && tx_valid) begin
+                    // Byte was just accepted by TX module - clear tx_valid and increment byte_count
+                    tx_valid <= 1'b0;
+                    if (byte_count < 16'd9) begin
+                        byte_count <= byte_count + 1;
+                    end else begin
+                        // Last byte sent - go to IDLE
+                        byte_count <= 16'd0;
+                        state <= IDLE;
+                    end
+                end else if (tx_ready && !tx_valid) begin
+                    // TX is ready and we're not sending - send next byte
                     tx_valid <= 1'b1;
-                    tx_data <= {2'b00, ub_done, ub_busy, vpu_done, vpu_busy, sys_done, sys_busy};
-                    state <= IDLE;
+                    case (byte_count)
+                        16'd0: tx_data <= state;  // Current state
+                        16'd1: tx_data <= debug_rx_count[7:0];  // RX count byte 0
+                        16'd2: tx_data <= debug_rx_count[15:8];  // RX count byte 1
+                        16'd3: tx_data <= debug_rx_count[23:16];  // RX count byte 2
+                        16'd4: tx_data <= debug_rx_count[31:24];  // RX count byte 3
+                        16'd5: tx_data <= debug_tx_count[7:0];  // TX count byte 0
+                        16'd6: tx_data <= debug_tx_count[15:8];  // TX count byte 1
+                        16'd7: tx_data <= debug_tx_count[23:16];  // TX count byte 2
+                        16'd8: tx_data <= debug_tx_count[31:24];  // TX count byte 3
+                        16'd9: tx_data <= debug_last_rx_byte;  // Last RX byte
+                        default: begin
+                            tx_valid <= 1'b0;
+                            byte_count <= 16'd0;
+                            state <= IDLE;
+                        end
+                    endcase
+                end else begin
+                    // TX not ready or tx_valid already set - keep current state
+                    // tx_valid stays high until tx_ready goes true and byte is accepted
                 end
             end
 

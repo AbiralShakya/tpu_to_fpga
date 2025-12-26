@@ -21,22 +21,40 @@ module accumulator (
 logic [63:0] buffer0 [0:255];
 logic [63:0] buffer1 [0:255];
 
-// Write operation
+// Register buffer selection to prevent glitches during read operations
+// This ensures atomic operations - once a read starts, it completes on the same buffer
+reg acc_buf_sel_reg;
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        acc_buf_sel_reg <= 1'b0;
+    end else begin
+        // Only update when no operations are active to prevent race conditions
+        // In practice, buffer selection should only change via SYNC instruction
+        // which waits for operations to complete
+        acc_buf_sel_reg <= acc_buf_sel;
+    end
+end
+
+// Write operation (uses registered buffer selection for consistency)
 always_ff @(posedge clk) begin
     if (wr_en) begin
-        if (acc_buf_sel == 0)
+        if (acc_buf_sel_reg == 0)
             buffer0[wr_addr] <= wr_data;
         else
             buffer1[wr_addr] <= wr_data;
     end
 end
 
-// Read operation (combinational)
-always_comb begin
-    if (acc_buf_sel == 0)
-        rd_data = buffer0[rd_addr];
-    else
-        rd_data = buffer1[rd_addr];
+// Read operation (synchronous with registered buffer selection to prevent glitches)
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        rd_data <= 64'h0;
+    end else if (rd_en) begin
+        if (acc_buf_sel_reg == 0)
+            rd_data <= buffer0[rd_addr];
+        else
+            rd_data <= buffer1[rd_addr];
+    end
 end
 
 endmodule

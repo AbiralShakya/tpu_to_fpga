@@ -63,10 +63,13 @@ reg wr_bank_sel;  // Which bank is currently being written
 // DOUBLE-BUFFERED READ LOGIC
 // =============================================================================
 
-// Bank selection based on ub_buf_sel (alternates every clock cycle)
+// Bank selection for true double buffering:
+// - Read from bank selected by ub_buf_sel (active bank)
+// - Write to opposite bank (~ub_buf_sel) to prevent conflicts
+// This ensures read and write never access the same bank simultaneously
 always @* begin
-    rd_bank_sel = ub_buf_sel;  // Current read bank
-    wr_bank_sel = ~ub_buf_sel; // Current write bank (opposite)
+    rd_bank_sel = ub_buf_sel;   // Current read bank (active bank)
+    wr_bank_sel = ~ub_buf_sel;  // Write to opposite bank (inactive bank)
 end
 
 always @(posedge clk) begin
@@ -201,5 +204,22 @@ assign ub_busy = (rd_state != RD_IDLE) || (wr_state != WR_IDLE);
 // Done when both read and write operations are complete
 assign ub_done = (rd_state == RD_IDLE) && (wr_state == WR_IDLE) &&
                  (rd_burst_count == 0) && (wr_burst_count == 0);
+
+// =============================================================================
+// SAFETY CHECK: Verify read and write never access same bank simultaneously
+// =============================================================================
+// This is a design-time check - if rd_bank_sel == wr_bank_sel, there's a bug
+// In normal operation with proper double buffering:
+//   - rd_bank_sel = ub_buf_sel (active bank for reading)
+//   - wr_bank_sel = ~ub_buf_sel (inactive bank for writing)
+//   - They should NEVER be equal
+// Note: This check is commented out to avoid synthesis issues, but serves as documentation
+// `ifdef SIMULATION
+//     always @(posedge clk) begin
+//         if ((rd_state != RD_IDLE) && (wr_state != WR_IDLE) && (rd_bank_sel == wr_bank_sel)) begin
+//             $error("UNIFIED BUFFER ERROR: Read and write accessing same bank simultaneously!");
+//         end
+//     end
+// `endif
 
 endmodule

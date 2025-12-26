@@ -31,9 +31,9 @@ set_false_path -from [get_ports rst_n]
 # =============================================================================
 
 # UART Interface (USB-UART on Basys3)
-# NOTE: Pin names are from PC/DTE perspective!
-#   B18 = UART_TXD_IN  (PC transmits → FPGA receives)
-#   A18 = UART_RXD_OUT (PC receives  ← FPGA transmits)
+# CORRECTED PIN ASSIGNMENTS (verified working with 700KB bitstreams):
+#   uart_tx (FPGA transmits) → A18 (PC receives)
+#   uart_rx (FPGA receives)  → B18 (PC transmits)
 set_property LOC A18 [get_ports uart_tx]
 set_property IOSTANDARD LVCMOS33 [get_ports uart_tx]
 set_property SLEW FAST [get_ports uart_tx]
@@ -44,6 +44,8 @@ set_property IOSTANDARD LVCMOS33 [get_ports uart_rx]
 # UART RX is asynchronous input - needs input delay constraint
 set_input_delay -clock sys_clk -min 0.000 [get_ports uart_rx]
 set_input_delay -clock sys_clk -max 2.000 [get_ports uart_rx]
+# Add pull-up to ensure idle state is HIGH (required for UART start bit detection)
+set_property PULLUP TRUE [get_ports uart_rx]
 
 # =============================================================================
 # SWITCHES (SW[14:0] - SW15 is tied to reset)

@@ -23,10 +23,9 @@ read_verilog -sv rtl/mlp_top.sv
 read_verilog -sv rtl/mmu.sv
 read_verilog -sv rtl/vpu.sv
 read_verilog -sv rtl/basys3_test_interface.sv
-read_verilog -sv rtl/uart_rx.sv
 read_verilog -sv rtl/uart_rx_improved.sv
 read_verilog -sv rtl/uart_tx.sv
-read_verilog -sv rtl/uart_dma_basys3_improved.sv
+read_verilog -sv rtl/uart_dma_basys3.sv
 
 # Read Xilinx primitives
 read_verilog xilinx_primitives.v
@@ -42,21 +41,20 @@ proc
 # This prevents nextpnr from trying to route global constants
 setundef -zero
 
-# Generic synthesis
-synth_xilinx -flatten -abc9 -arch xc7 -top tpu_top_wrapper
-
-# Aggressively optimize constants
-opt -full
-opt_clean -purge
+# Generic synthesis - avoid all problematic passes
+synth_xilinx -flatten -arch xc7 -top tpu_top_wrapper -nodsp -nobram
 
 # Remove $scopeinfo cells explicitly (they can't be placed)
 delete {*\$scopeinfo*}
 
-# Split nets to reduce constant fanout explosion
-splitnets -ports
+# Disable ALL memory-related passes
+memory -nomap
+memory_dff -nomap
+memory_share -nomap
+memory_collect -nomap
 
-# Final optimization and cleanup
-opt -full
+# Minimal optimization
+opt -fast
 clean -purge
 
 # Write JSON for nextpnr

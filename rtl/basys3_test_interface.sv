@@ -186,7 +186,8 @@ always_comb begin
 
     case (current_mode)
         MODE_IDLE: begin
-            display_value = {12'b0, sys_busy, vpu_busy, ub_busy, 1'b0};
+            // Show last received byte on 7-seg display for debugging
+            display_value = {8'h00, uart_debug_last_rx_byte};
             display_mode = 2'b00;  // Hex
         end
         MODE_INSTR: begin
@@ -230,22 +231,62 @@ end
 // LED STATUS DISPLAY (Multiplexed: UART Debug vs Physical Mode)
 // ============================================================================
 
+// #region agent log - Monitor UART RX pin directly (HYPOTHESIS A)
+// Register UART RX pin to observe its state
+reg uart_rx_sync;
+always_ff @(posedge clk) begin
+    uart_rx_sync <= uart_rx;
+end
+// #endregion
+
 always_comb begin
-    if (uart_active) begin
-        // UART Debug Mode: Show UART state and byte count
-        led = {uart_debug_byte_count[7:0], uart_debug_state[7:0]};
-    end else begin
-        // Physical Mode: Show mode-specific status
-        case (current_mode)
-            MODE_IDLE:    led = {12'b000000000000, sys_busy, vpu_busy, ub_busy, 1'b0};
-            MODE_INSTR:   led = {8'b00001111, sw[7:0]};
-            MODE_DATA:    led = sw;
-            MODE_WEIGHT:  led = {8'b11110000, sw[7:0]};
-            MODE_EXECUTE: led = {12'b101010101010, sys_busy, vpu_busy, ub_busy, 1'b0};
-            MODE_RESULTS: led = ub_rd_data[15:0];
-            default:      led = 16'b1010101010101010;
-        endcase
-    end
+    // Always show UART debug info on LEDs for debugging (even when UART inactive)
+    // LED[15:12] = Framing error count[3:0] (to see if bytes have errors)
+    // LED[11:8] = RX count[3:0] (valid bytes received)
+    // LED[7:4] = State[3:0] (UART state machine state)
+    // LED[3:0] = Last RX byte[3:0] (last valid byte received, low nibble)
+    // This allows us to observe FPGA state without needing UART to work
+    // Show command register and full last byte to diagnose bit corruption
+    // LED[15:12] = Framing errors
+    // LED[11:8] = RX count
+    // LED[7:4] = Command register low nibble (what command was captured)
+    // LED[3:0] = Last RX byte low nibble (what was actually received)
+    // Show state and TX count to diagnose why no response is sent
+    // LED[15:12] = Framing errors
+    // LED[11:8] = RX count
+    // LED[7:4] = UART state machine state (10 = SEND_STATUS = 0xA)
+    // LED[3:0] = TX count low nibble (should increment when sending)
+    led = {
+        uart_debug_framing_error_count[3:0],  // LED[15:12] - Framing errors
+        uart_debug_rx_count[3:0],             // LED[11:8] - Valid RX count
+        uart_debug_state[3:0],                // LED[7:4] - UART state (0xA = SEND_STATUS)
+        uart_debug_tx_count[3:0]             // LED[3:0] - TX count (should increment)
+    };
+    
+    // #region agent log - Additional diagnostic: show full last byte on 7-seg display
+    // We can use the 7-segment display to show the full byte value
+    // #endregion
+    
+    // #region agent log - Log LED values for debugging (HYPOTHESIS A, B)
+    // The LED values are visible to user, so we can infer FPGA state
+    // #endregion
+    
+    // Original logic (commented out - can restore if needed):
+    // if (uart_active) begin
+    //     // UART Debug Mode: Show UART state and byte count
+    //     led = {uart_debug_byte_count[7:0], uart_debug_state[7:0]};
+    // end else begin
+    //     // Physical Mode: Show mode-specific status
+    //     case (current_mode)
+    //         MODE_IDLE:    led = {12'b000000000000, sys_busy, vpu_busy, ub_busy, 1'b0};
+    //         MODE_INSTR:   led = {8'b00001111, sw[7:0]};
+    //         MODE_DATA:    led = sw;
+    //         MODE_WEIGHT:  led = {8'b11110000, sw[7:0]};
+    //         MODE_EXECUTE: led = {12'b101010101010, sys_busy, vpu_busy, ub_busy, 1'b0};
+    //         MODE_RESULTS: led = ub_rd_data[15:0];
+    //         default:      led = 16'b1010101010101010;
+    //     endcase
+    // end
 end
 
 // ============================================================================
@@ -356,6 +397,11 @@ logic uart_start_execution;
 logic [7:0] uart_debug_state;
 logic [7:0] uart_debug_cmd;
 logic [15:0] uart_debug_byte_count;
+logic [31:0] uart_debug_rx_count;
+logic [31:0] uart_debug_tx_count;
+logic [7:0] uart_debug_last_rx_byte;
+logic [31:0] uart_debug_framing_error_count;
+logic [7:0] uart_debug_cmd;
 
 // Instantiate standard UART DMA module (complete implementation)
 uart_dma_basys3 uart_dma (
@@ -384,7 +430,11 @@ uart_dma_basys3 uart_dma (
     .ub_done(ub_done),
     .debug_state(uart_debug_state),
     .debug_cmd(uart_debug_cmd),
-    .debug_byte_count(uart_debug_byte_count)
+    .debug_byte_count(uart_debug_byte_count),
+    .debug_rx_count(uart_debug_rx_count),
+    .debug_tx_count(uart_debug_tx_count),
+    .debug_last_rx_byte(uart_debug_last_rx_byte),
+    .debug_framing_error_count(uart_debug_framing_error_count)
 );
 
 // Multiplex between UART DMA and physical interface

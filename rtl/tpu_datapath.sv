@@ -59,7 +59,9 @@ module tpu_datapath (
     output logic        vpu_done,
     output logic        dma_busy,
     output logic        dma_done,
-    output logic        wt_busy          // Weight FIFO busy
+    output logic        wt_busy,         // Weight FIFO busy
+    output logic        ub_busy,         // Unified buffer busy (for buffer toggle safety)
+    output logic        ub_done          // Unified buffer done (for UART status)
 );
 
 // =============================================================================
@@ -89,8 +91,7 @@ logic         vpu_out_valid;
 // Unified buffer connections (double-buffered)
 logic         ub_rd_valid;
 logic         ub_wr_ready;
-logic         ub_busy;
-logic         ub_done;
+// ub_busy and ub_done are declared as output ports above, no need to redeclare
 
 // Weight FIFO connections
 logic         wt_rd_en;
