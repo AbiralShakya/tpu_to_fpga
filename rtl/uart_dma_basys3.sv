@@ -53,7 +53,13 @@ module uart_dma_basys3 #(
     output reg        debug_rx_valid_pulse, // Pulse when rx_valid goes high
     output reg        debug_reset_state,    // Current reset state (inverted)
     output reg [31:0] debug_framing_error_count, // Count of framing errors
-    output reg [7:0]  debug_last_tx_byte   // Last byte transmitted (for debugging)
+    output reg [7:0]  debug_last_tx_byte,   // Last byte transmitted (for debugging)
+    // Additional READ_UB debug signals
+    output reg        debug_read_ub_tx_ready,  // Track tx_ready in READ_UB
+    output reg        debug_read_ub_tx_valid, // Track tx_valid in READ_UB
+    output reg [15:0] debug_read_ub_length,   // Track length in READ_UB
+    output reg [15:0] debug_read_ub_byte_count, // Track byte_count in READ_UB
+    output reg [7:0]  debug_read_ub_buffer_lsb // Track read_buffer[7:0] in READ_UB
 );
 
 // ============================================================================
@@ -128,6 +134,7 @@ reg [31:0]  instr_buffer;
 // Read buffer for sending data back
 reg [255:0] read_buffer;
 reg [7:0]   read_index;
+reg         read_ub_initialized;  // Flag to track if READ_UB has been initialized
 
 // Debug: store last written data
 reg [255:0] last_ub_write_data;
@@ -299,6 +306,8 @@ always @(posedge clk or negedge rst_n) begin
                             // Start read operation
                             ub_rd_en <= 1'b1;
                             ub_rd_addr <= addr_lo;
+                            byte_count <= 16'h0000;  // Reset byte count for READ_UB
+                            read_ub_initialized <= 1'b0;  // Reset initialization flag
                             state <= READ_UB;
                         end
                         default: state <= IDLE;
@@ -311,7 +320,8 @@ always @(posedge clk or negedge rst_n) begin
             // ================================================================
             WRITE_UB: begin
                 if (rx_valid && !rx_framing_error) begin
-                    // Accumulate bytes into buffer (MSB first for big-endian)
+                    // Accumulate bytes into buffer (newest byte goes to LSB)
+                    // ub_buffer[7:0] = newest byte, ub_buffer[15:8] = previous, etc.
                     ub_buffer <= {rx_data, ub_buffer[255:8]};
                     byte_index <= byte_index + 1;
                     byte_count <= byte_count + 1;
@@ -320,40 +330,68 @@ always @(posedge clk or negedge rst_n) begin
                     if (byte_index == 5'd31) begin
                         ub_wr_en <= 1'b1;
                         ub_wr_addr <= addr_lo;
-                        ub_wr_data <= {rx_data, ub_buffer[255:8]};  // Complete 32-byte word
+                        // ub_buffer already updated above with {rx_data, ub_buffer[255:8]}
+                        // ub_buffer has bytes in reverse order: [7:0]=newest, [31:24]=oldest (for 4 bytes)
+                        // For READ_UB, we want to send oldest first, so we need to reverse
+                        // Reverse: ub_buffer[31:24] (oldest) -> output[7:0] (first byte)
+                        ub_wr_data <= {
+                            ub_buffer[31:24],  ub_buffer[23:16],   ub_buffer[15:8],    ub_buffer[7:0],
+                            ub_buffer[63:56],  ub_buffer[55:48],   ub_buffer[47:40],   ub_buffer[39:32],
+                            ub_buffer[95:88],  ub_buffer[87:80],   ub_buffer[79:72],   ub_buffer[71:64],
+                            ub_buffer[127:120], ub_buffer[119:112], ub_buffer[111:104], ub_buffer[103:96],
+                            ub_buffer[159:152], ub_buffer[151:144], ub_buffer[143:136], ub_buffer[135:128],
+                            ub_buffer[191:184], ub_buffer[183:176], ub_buffer[175:168], ub_buffer[167:160],
+                            ub_buffer[223:216], ub_buffer[215:208], ub_buffer[207:200], ub_buffer[199:192],
+                            ub_buffer[255:248], ub_buffer[247:240], ub_buffer[239:232], ub_buffer[231:224]
+                        };
+                        last_ub_write_data <= {
+                            ub_buffer[31:24],  ub_buffer[23:16],   ub_buffer[15:8],    ub_buffer[7:0],
+                            ub_buffer[63:56],  ub_buffer[55:48],   ub_buffer[47:40],   ub_buffer[39:32],
+                            ub_buffer[95:88],  ub_buffer[87:80],   ub_buffer[79:72],   ub_buffer[71:64],
+                            ub_buffer[127:120], ub_buffer[119:112], ub_buffer[111:104], ub_buffer[103:96],
+                            ub_buffer[159:152], ub_buffer[151:144], ub_buffer[143:136], ub_buffer[135:128],
+                            ub_buffer[191:184], ub_buffer[183:176], ub_buffer[175:168], ub_buffer[167:160],
+                            ub_buffer[223:216], ub_buffer[215:208], ub_buffer[207:200], ub_buffer[199:192],
+                            ub_buffer[255:248], ub_buffer[247:240], ub_buffer[239:232], ub_buffer[231:224]
+                        };  // Store for READ_UB (correct order: oldest first)
+                        last_ub_write_addr <= addr_lo;
 
                         addr_lo <= addr_lo + 1;  // Increment address
                         byte_index <= 5'd0;
                     end
 
                     // Check if we've received all expected bytes
+                    // Note: byte_count and byte_index are incremented BEFORE this check
+                    // So when byte_count == length, byte_index is the count of bytes received (0-indexed)
+                    // ub_buffer already contains the current rx_data in [7:0]
                     if (byte_count >= length) begin
                         // Always write the accumulated data
                         ub_wr_en <= 1'b1;
                         ub_wr_addr <= addr_lo;
-                        // For partial writes, pad with zeros and put received bytes in LSB
-                        case (byte_index)
-                            5'd0: begin
-                                ub_wr_data <= {224'h0, rx_data};  // 1 byte
-                                last_ub_write_data <= {224'h0, rx_data};
-                            end
-                            5'd1: begin
-                                ub_wr_data <= {216'h0, ub_buffer[15:8], rx_data};  // 2 bytes
-                                last_ub_write_data <= {216'h0, ub_buffer[15:8], rx_data};
-                            end
-                            5'd2: begin
-                                ub_wr_data <= {208'h0, ub_buffer[23:8], rx_data};  // 3 bytes
-                                last_ub_write_data <= {208'h0, ub_buffer[23:8], rx_data};
-                            end
-                            5'd3: begin
-                                ub_wr_data <= {200'h0, ub_buffer[31:8], rx_data};  // 4 bytes
-                                last_ub_write_data <= {200'h0, ub_buffer[31:8], rx_data};
-                            end
-                            default: begin
-                                ub_wr_data <= {rx_data, ub_buffer[255:8]};  // Fallback
-                                last_ub_write_data <= {rx_data, ub_buffer[255:8]};
-                            end
-                        endcase
+                        // ub_buffer is built as {newest, ..., oldest}
+                        // So ub_buffer[7:0] = last byte, ub_buffer[15:8] = second-to-last, etc.
+                        // For READ_UB, we want to send in the order received (oldest first)
+                        // Reverse: ub_buffer[31:24] (oldest) -> output[7:0] (first byte)
+                        ub_wr_data <= {
+                            ub_buffer[31:24],  ub_buffer[23:16],   ub_buffer[15:8],    ub_buffer[7:0],
+                            ub_buffer[63:56],  ub_buffer[55:48],   ub_buffer[47:40],   ub_buffer[39:32],
+                            ub_buffer[95:88],  ub_buffer[87:80],   ub_buffer[79:72],   ub_buffer[71:64],
+                            ub_buffer[127:120], ub_buffer[119:112], ub_buffer[111:104], ub_buffer[103:96],
+                            ub_buffer[159:152], ub_buffer[151:144], ub_buffer[143:136], ub_buffer[135:128],
+                            ub_buffer[191:184], ub_buffer[183:176], ub_buffer[175:168], ub_buffer[167:160],
+                            ub_buffer[223:216], ub_buffer[215:208], ub_buffer[207:200], ub_buffer[199:192],
+                            ub_buffer[255:248], ub_buffer[247:240], ub_buffer[239:232], ub_buffer[231:224]
+                        };
+                        last_ub_write_data <= {
+                            ub_buffer[31:24],  ub_buffer[23:16],   ub_buffer[15:8],    ub_buffer[7:0],
+                            ub_buffer[63:56],  ub_buffer[55:48],   ub_buffer[47:40],   ub_buffer[39:32],
+                            ub_buffer[95:88],  ub_buffer[87:80],   ub_buffer[79:72],   ub_buffer[71:64],
+                            ub_buffer[127:120], ub_buffer[119:112], ub_buffer[111:104], ub_buffer[103:96],
+                            ub_buffer[159:152], ub_buffer[151:144], ub_buffer[143:136], ub_buffer[135:128],
+                            ub_buffer[191:184], ub_buffer[183:176], ub_buffer[175:168], ub_buffer[167:160],
+                            ub_buffer[223:216], ub_buffer[215:208], ub_buffer[207:200], ub_buffer[199:192],
+                            ub_buffer[255:248], ub_buffer[247:240], ub_buffer[239:232], ub_buffer[231:224]
+                        };  // Store for READ_UB (correct order: oldest first)
                         last_ub_write_addr <= addr_lo;
 
                         // Send ACK byte to confirm write completed
@@ -436,6 +474,7 @@ always @(posedge clk or negedge rst_n) begin
                     command <= rx_data;
                     byte_count <= 16'h0000;
                     byte_index <= 5'd0;
+                    read_ub_initialized <= 1'b0;  // Reset initialization flag when interrupted
                     
                     case (rx_data)
                         8'h01: state <= READ_ADDR_HI;  // Write UB
@@ -448,38 +487,52 @@ always @(posedge clk or negedge rst_n) begin
                         default: state <= IDLE;
                     endcase
                 end else begin
-                    // Read from Unified Buffer
-                    if (byte_count == 16'd0) begin
-                        // Initialize read operation
-                        read_buffer <= last_ub_write_data;  // Load the data that was written
+                    // Read from Unified Buffer and send via UART
+                    // Clear read enable after we've entered READ_UB state (was set in READ_LENGTH_LO)
+                    ub_rd_en <= 1'b0;
+                    
+                    // Debug: Track READ_UB internal signals
+                    debug_read_ub_tx_ready <= tx_ready;
+                    debug_read_ub_tx_valid <= tx_valid;
+                    debug_read_ub_length <= length;
+                    debug_read_ub_byte_count <= byte_count;
+                    debug_read_ub_buffer_lsb <= read_buffer[7:0];
+                    
+                    // State machine priority: Initialize > Advance > Send
+                    // This ensures proper sequencing
+                    
+                    if (!read_ub_initialized) begin
+                        // Initialize on first entry - load data from Unified Buffer
+                        read_buffer <= last_ub_write_data;  // For now, use last written data
                         read_index <= 8'd0;
                         byte_count <= 16'd0;  // Start at 0
-                        tx_valid <= 1'b0;
+                        tx_valid <= 1'b0;  // Don't assert yet
+                        read_ub_initialized <= 1'b1;  // Mark as initialized
                         debug_last_tx_byte <= 8'hAA;  // Debug: mark READ_UB start
                     end else if (tx_ready && tx_valid) begin
                         // Byte was just accepted by TX module - advance to next byte
                         tx_valid <= 1'b0;
-                        read_buffer <= {read_buffer[247:0], 8'h00};  // Shift buffer left (LSB out)
+                        read_buffer <= {8'h00, read_buffer[255:8]};  // Shift buffer RIGHT
                         read_index <= read_index + 1;
-                        byte_count <= byte_count + 1;
-                        debug_last_tx_byte <= read_buffer[7:0];  // Debug: last sent byte
+                        byte_count <= byte_count + 1;  // Increment count of bytes sent
+                        debug_last_tx_byte <= read_buffer[7:0];  // Debug: what was sent
 
                         // Check if we've sent all requested bytes
-                        if (byte_count >= length) begin
+                        if (byte_count + 1 >= length) begin
                             // All bytes sent - go to IDLE
                             state <= IDLE;
                             byte_count <= 16'd0;
+                            read_ub_initialized <= 1'b0;  // Reset for next READ_UB
                             debug_last_tx_byte <= 8'hBB;  // Debug: READ_UB complete
                         end
                     end else if (tx_ready && !tx_valid && byte_count < length) begin
-                        // TX is ready and we have more bytes to send - send next byte
+                        // TX is ready and we have data to send - send next byte
                         tx_valid <= 1'b1;
-                        tx_data <= read_buffer[7:0];  // Send data from buffer
+                        tx_data <= read_buffer[7:0];  // Send LSB of buffer
                         debug_tx_count <= debug_tx_count + 1;
                         debug_last_tx_byte <= 8'hCC;  // Debug: sending byte
-                    end else begin
-                        // TX not ready or tx_valid already set or no more bytes - wait
                     end
+                    // If none of the above, wait (TX not ready, already sending, or not initialized)
                 end
             end
 
