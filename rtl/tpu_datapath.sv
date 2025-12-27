@@ -77,6 +77,10 @@ logic [7:0] row0_act, row1_act, row2_act;  // Separate row activations
 logic [7:0] col0_wt, col1_wt, col2_wt;     // Separate column weights
 logic [31:0] acc0_out, acc1_out, acc2_out; // Direct accumulator outputs
 
+// Latched accumulator outputs for ST_UB instruction
+// These capture the PE outputs when sys_done pulses, providing stable data for ST_UB
+logic [31:0] acc0_latched, acc1_latched, acc2_latched;
+
 // Systolic controller signals
 logic        en_weight_pass;
 logic        en_capture_col0;
@@ -364,10 +368,34 @@ assign dma_busy = 1'b0;
 assign dma_done = 1'b1;
 
 // =============================================================================
+// ACCUMULATOR OUTPUT LATCHING FOR ST_UB
+// =============================================================================
+// Continuously update latches during systolic_active (SYS_COMPUTE phase).
+// When computation ends, the latches hold the last valid accumulator outputs.
+// This ensures ST_UB reads stable values even after the systolic array stops.
+
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        acc0_latched <= 32'h0;
+        acc1_latched <= 32'h0;
+        acc2_latched <= 32'h0;
+    end else if (systolic_active) begin
+        // Continuously capture accumulator outputs during computation
+        // The final values will be the last ones captured before systolic_active goes low
+        acc0_latched <= acc0_out;
+        acc1_latched <= acc1_out;
+        acc2_latched <= acc2_out;
+    end
+    // Hold values when systolic_active is low - they remain stable for ST_UB
+end
+
+// =============================================================================
 // ACCUMULATOR OUTPUT FOR ST_UB
 // =============================================================================
-// Pack the three 32-bit accumulator outputs into a 256-bit word for UB write
-// Layout: [255:96]=0 padding, [95:64]=acc2, [63:32]=acc1, [31:0]=acc0
-assign acc_data_out = {160'b0, acc2_out, acc1_out, acc0_out};
+// Pack the lower 8 bits of each LATCHED accumulator output into consecutive bytes.
+// Layout: [255:24]=0 padding, [23:16]=acc2[7:0], [15:8]=acc1[7:0], [7:0]=acc0[7:0]
+// This matches the Python expectation of int8 outputs in bytes 0, 1, 2.
+// Using latched values ensures stable data when ST_UB executes.
+assign acc_data_out = {232'b0, acc2_latched[7:0], acc1_latched[7:0], acc0_latched[7:0]};
 
 endmodule
