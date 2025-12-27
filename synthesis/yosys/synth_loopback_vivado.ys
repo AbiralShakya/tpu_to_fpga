@@ -3,7 +3,7 @@
 
 # Read source files
 read_verilog -sv rtl/uart_loopback_test.sv
-read_verilog -sv rtl/uart_rx.sv
+read_verilog -sv rtl/uart_rx_improved.sv
 read_verilog -sv rtl/uart_tx.sv
 
 # Read Xilinx primitives

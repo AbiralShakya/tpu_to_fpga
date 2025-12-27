@@ -394,6 +394,29 @@ Built following TPU architectural principles and FPGA best practices for high-pe
 ---
 
 **Last Updated**: December 26, 2025  
-**Version**: 1.1 (Critical bug fixes applied)  
-**Status**: ✅ Unified Buffer Read Issue Resolved - Ready for Testing
+**Version**: 1.2 (All interface bugs resolved)  
+**Status**: ✅ **Unified Buffer Read AND Write Fixed** - Ready for Testing
+
+### Update Log (v1.2)
+
+**Additional Fixes Applied:**
+- ✅ Added missing `ub_wr_count` signal to `uart_dma_basys3.sv` write interface
+- ✅ Extended `ub_wr_addr` from 8 to 9 bits (now can access both banks)
+- ✅ Updated `basys3_test_interface.sv` module interface with correct widths
+- ✅ Added `ub_wr_count` passthrough in `basys3_test_interface.sv`
+- ✅ Fixed all multiplexing logic to properly extend addresses
+- ✅ Both read AND write operations now have complete, correct interfaces
+
+**What Was Broken (v1.1):**
+- Read side handshaking was fixed, but writes were still broken
+- Missing `ub_wr_count` caused write state machine to hang
+- 8-bit addresses couldn't access bank 1 (partial sums location)
+- Interface mismatch cascaded through `basys3_test_interface` module
+
+**What's Fixed Now (v1.2):**
+- ✅ Complete write interface with proper burst count signaling
+- ✅ 9-bit addressing for both read and write (512 locations accessible)
+- ✅ Proper handshaking on both read (`ub_rd_valid`) and write sides
+- ✅ All interface modules updated with correct signal widths
+- ✅ Partial sum operations should now work correctly
 

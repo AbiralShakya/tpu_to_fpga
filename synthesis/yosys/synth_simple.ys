@@ -21,7 +21,7 @@ read_verilog -sv rtl/mlp_top.sv
 read_verilog -sv rtl/mmu.sv
 read_verilog -sv rtl/vpu.sv
 read_verilog -sv rtl/basys3_test_interface.sv
-read_verilog -sv rtl/uart_rx.sv
+read_verilog -sv rtl/uart_rx_improved.sv
 read_verilog -sv rtl/uart_tx.sv
 read_verilog -sv rtl/uart_dma_basys3.sv
 

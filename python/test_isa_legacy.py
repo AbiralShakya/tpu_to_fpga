@@ -115,7 +115,7 @@ def test_isa_legacy_mode(port):
         print("✓ Basic ISA tests completed!")
         print("="*80)
         print("\nNote: Current bitstream uses legacy mode (no streaming).")
-        print("For full streaming mode, rebuild with uart_dma_basys3_improved.sv")
+        print("For full streaming mode, uart_dma_basys3.sv supports all operations")
         
     except Exception as e:
         print(f"\n✗ Error: {e}")

@@ -14,7 +14,7 @@ read_verilog -sv rtl/accumulator.sv
 read_verilog -sv rtl/vector_processing_unit.sv
 read_verilog -sv rtl/basys3_test_interface.sv
 read_verilog -sv rtl/uart_dma_basys3.sv
-read_verilog -sv rtl/uart_rx.sv
+read_verilog -sv rtl/uart_rx_improved.sv
 read_verilog -sv rtl/uart_tx.sv
 
 # Read Xilinx primitives

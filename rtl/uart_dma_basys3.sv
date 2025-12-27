@@ -13,7 +13,8 @@ module uart_dma_basys3 #(
 
     // To Unified Buffer (dual-port)
     output logic        ub_wr_en,
-    output logic [7:0]  ub_wr_addr,
+    output logic [8:0]  ub_wr_addr,     // 9-bit address for unified buffer
+    output logic [8:0]  ub_wr_count,    // Burst count (number of 256-bit words)
     output logic [255:0] ub_wr_data,    // 32 bytes at once
     output logic        ub_rd_en,
     output logic [8:0]  ub_rd_addr,     // 9-bit address for unified buffer
@@ -174,6 +175,8 @@ always @(posedge clk or negedge rst_n) begin
         last_ub_write_addr <= 8'h0;
 
         ub_wr_en <= 1'b0;
+        ub_wr_addr <= 9'h0;
+        ub_wr_count <= 9'h0;
         ub_rd_en <= 1'b0;
         ub_rd_addr <= 9'h0;
         ub_rd_count <= 9'h0;
@@ -383,7 +386,8 @@ always @(posedge clk or negedge rst_n) begin
                 // At this point: ub_buffer has bytes 1-31, rx_data will be byte 32
                 if (byte_index == 5'd30) begin
                         ub_wr_en <= 1'b1;
-                        ub_wr_addr <= addr_lo;
+                        ub_wr_addr <= {1'b0, addr_lo};  // Extend to 9 bits
+                        ub_wr_count <= 9'd1;  // Write 1 word (256 bits = 32 bytes)
                         // ub_buffer currently has bytes 1-31: ub_buffer[255:248]=byte1, ..., ub_buffer[7:0]=byte31
                         // rx_data = byte32 (will be added to buffer at end of cycle)
                         // For ub_wr_data, we need to reverse: oldest first
@@ -444,7 +448,8 @@ always @(posedge clk or negedge rst_n) begin
                 if (byte_count >= length && byte_index != 5'd30) begin
                     // Always write the accumulated data
                             ub_wr_en <= 1'b1;
-                            ub_wr_addr <= addr_lo;
+                            ub_wr_addr <= {1'b0, addr_lo};  // Extend to 9 bits
+                            ub_wr_count <= 9'd1;  // Write 1 word (256 bits = 32 bytes)
                     // ub_buffer is built as {newest, ..., oldest}
                     // So ub_buffer[7:0] = last byte, ub_buffer[15:8] = second-to-last, etc.
                     // For READ_UB, we want to send in the order received (oldest first)

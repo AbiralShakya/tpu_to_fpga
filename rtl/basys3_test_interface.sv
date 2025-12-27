@@ -22,7 +22,8 @@ module basys3_test_interface (
 
     // To TPU Core (replaces direct UART DMA connection)
     output logic        ub_wr_en,
-    output logic [7:0]  ub_wr_addr,
+    output logic [8:0]  ub_wr_addr,     // 9-bit address: [8]=bank, [7:0]=address
+    output logic [8:0]  ub_wr_count,    // 9-bit burst count
     output logic [255:0] ub_wr_data,
     output logic        ub_rd_en,
     output logic [8:0]  ub_rd_addr,     // 9-bit address: [8]=bank, [7:0]=address
@@ -383,7 +384,8 @@ assign ub_rd_count = uart_active ? uart_ub_rd_count : 9'd1;  // Physical interfa
 
 // UART DMA signals
 logic uart_ub_wr_en;
-logic [7:0] uart_ub_wr_addr;
+logic [8:0] uart_ub_wr_addr;
+logic [8:0] uart_ub_wr_count;
 logic [255:0] uart_ub_wr_data;
 logic uart_ub_rd_en;
 logic [8:0] uart_ub_rd_addr;
@@ -415,6 +417,7 @@ uart_dma_basys3 uart_dma (
     .uart_tx(uart_tx),
     .ub_wr_en(uart_ub_wr_en),
     .ub_wr_addr(uart_ub_wr_addr),
+    .ub_wr_count(uart_ub_wr_count),
     .ub_wr_data(uart_ub_wr_data),
     .ub_rd_en(uart_ub_rd_en),
     .ub_rd_addr(uart_ub_rd_addr),
@@ -482,11 +485,12 @@ assign phys_start_execution = (current_mode == MODE_EXECUTE && btn_press[0]);
 
 // Output multiplexing - UART takes priority
 assign ub_wr_en = uart_active ? uart_ub_wr_en : phys_ub_wr_en;
-assign ub_wr_addr = uart_active ? uart_ub_wr_addr : phys_ub_wr_addr;
+assign ub_wr_addr = uart_active ? uart_ub_wr_addr : {1'b0, phys_ub_wr_addr};  // Extend phys addr to 9 bits
+assign ub_wr_count = uart_active ? uart_ub_wr_count : 9'd1;  // Physical interface writes 1 word at a time
 assign ub_wr_data = uart_active ? uart_ub_wr_data : phys_ub_wr_data;
 
 assign ub_rd_en = uart_active ? uart_ub_rd_en : phys_ub_rd_en;
-// ub_rd_addr and ub_rd_count already assigned above (near line 376)
+// ub_rd_addr and ub_rd_count already assigned above (near line 378)
 
 assign wt_wr_en = uart_active ? uart_wt_wr_en : phys_wt_wr_en;
 assign wt_wr_addr = uart_active ? uart_wt_wr_addr : phys_wt_wr_addr;
