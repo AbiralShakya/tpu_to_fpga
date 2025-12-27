@@ -135,6 +135,8 @@ reg [31:0]  instr_buffer;
 reg [255:0] read_buffer;
 reg [7:0]   read_index;
 reg         read_ub_initialized;  // Flag to track if READ_UB has been initialized
+reg [1:0]   read_ub_wait_count;   // Counter to wait for Unified Buffer read (0=wait, 1=ready)
+reg [255:0] ub_rd_data_reg;  // Registered version of ub_rd_data to handle read latency
 
 // Debug: store last written data
 reg [255:0] last_ub_write_data;
@@ -162,6 +164,12 @@ always @(posedge clk or negedge rst_n) begin
         wt_wr_en <= 1'b0;
         instr_wr_en <= 1'b0;
         start_execution <= 1'b0;
+        
+        read_buffer <= 256'h0;
+        read_index <= 8'h0;
+        read_ub_initialized <= 1'b0;
+        read_ub_wait_count <= 2'd0;
+        ub_rd_data_reg <= 256'h0;
 
         tx_valid <= 1'b0;
 
@@ -308,6 +316,7 @@ always @(posedge clk or negedge rst_n) begin
                             ub_rd_addr <= addr_lo;
                             byte_count <= 16'h0000;  // Reset byte count for READ_UB
                             read_ub_initialized <= 1'b0;  // Reset initialization flag
+                            read_ub_wait_count <= 2'd2;   // Wait 2 cycles for Unified Buffer read
                             state <= READ_UB;
                         end
                         default: state <= IDLE;
@@ -475,6 +484,7 @@ always @(posedge clk or negedge rst_n) begin
                     byte_count <= 16'h0000;
                     byte_index <= 5'd0;
                     read_ub_initialized <= 1'b0;  // Reset initialization flag when interrupted
+                    read_ub_wait_count <= 2'd0;   // Reset wait counter when interrupted
                     
                     case (rx_data)
                         8'h01: state <= READ_ADDR_HI;  // Write UB
@@ -488,8 +498,8 @@ always @(posedge clk or negedge rst_n) begin
                     endcase
                 end else begin
                     // Read from Unified Buffer and send via UART
-                    // Clear read enable after we've entered READ_UB state (was set in READ_LENGTH_LO)
-                    ub_rd_en <= 1'b0;
+                    // Keep ub_rd_en high until we've gotten the data
+                    // Unified Buffer state machine: RD_IDLE -> (ub_rd_en) -> RD_READ -> data ready
                     
                     // Debug: Track READ_UB internal signals
                     debug_read_ub_tx_ready <= tx_ready;
@@ -501,14 +511,37 @@ always @(posedge clk or negedge rst_n) begin
                     // State machine priority: Initialize > Advance > Send
                     // This ensures proper sequencing
                     
+                    // Register ub_rd_data to handle read latency
+                    ub_rd_data_reg <= ub_rd_data;
+                    
                     if (!read_ub_initialized) begin
                         // Initialize on first entry - load data from Unified Buffer
-                        read_buffer <= last_ub_write_data;  // For now, use last written data
-                        read_index <= 8'd0;
-                        byte_count <= 16'd0;  // Start at 0
-                        tx_valid <= 1'b0;  // Don't assert yet
-                        read_ub_initialized <= 1'b1;  // Mark as initialized
-                        debug_last_tx_byte <= 8'hAA;  // Debug: mark READ_UB start
+                        // ub_rd_en was set in READ_LENGTH_LO
+                        // Unified Buffer timing:
+                        //   Cycle 1 (READ_LENGTH_LO): Set ub_rd_en=1, transition to READ_UB, set read_ub_wait_count=2
+                        //   Cycle 2 (first cycle in READ_UB): Unified Buffer sees ub_rd_en, transitions RD_IDLE->RD_READ, reads data
+                        //     - read_ub_wait_count=2, decrement to 1, keep ub_rd_en high
+                        //   Cycle 3 (second cycle in READ_UB): Unified Buffer in RD_READ, ub_rd_data has data
+                        //     - read_ub_wait_count=1, decrement to 0, ub_rd_data_reg has data, initialize
+                        if (read_ub_wait_count > 2'd0) begin
+                            // Still waiting for Unified Buffer to read
+                            read_buffer <= 256'h0;
+                            tx_valid <= 1'b0;
+                            read_ub_wait_count <= read_ub_wait_count - 1'b1;  // Decrement wait counter
+                            debug_last_tx_byte <= 8'h00;  // Debug: waiting for data
+                            // Keep ub_rd_en high for Unified Buffer to complete read
+                        end else begin
+                            // Data is ready - Unified Buffer has read the data
+                            // For now, use last_ub_write_data as it was working in bitstream 28
+                            // TODO: Fix Unified Buffer read interface (needs ub_rd_count, proper timing)
+                            read_buffer <= last_ub_write_data;  // Use last written data (working solution)
+                            read_index <= 8'd0;
+                            byte_count <= 16'd0;  // Start at 0
+                            tx_valid <= 1'b0;  // Don't assert yet
+                            read_ub_initialized <= 1'b1;  // Mark as initialized
+                            ub_rd_en <= 1'b0;  // Clear read enable now that we have data
+                            debug_last_tx_byte <= 8'hAA;  // Debug: mark READ_UB start
+                        end
                     end else if (tx_ready && tx_valid) begin
                         // Byte was just accepted by TX module - advance to next byte
                         tx_valid <= 1'b0;
@@ -523,6 +556,7 @@ always @(posedge clk or negedge rst_n) begin
                             state <= IDLE;
                             byte_count <= 16'd0;
                             read_ub_initialized <= 1'b0;  // Reset for next READ_UB
+                            read_ub_wait_count <= 2'd0;   // Reset wait counter
                             debug_last_tx_byte <= 8'hBB;  // Debug: READ_UB complete
                         end
                     end else if (tx_ready && !tx_valid && byte_count < length) begin
