@@ -388,40 +388,32 @@ always @(posedge clk or negedge rst_n) begin
                         ub_wr_en <= 1'b1;
                         ub_wr_addr <= {1'b0, addr_lo};  // Extend to 9 bits
                         ub_wr_count <= 9'd1;  // Write 1 word (256 bits = 32 bytes)
-                        // ub_buffer currently has bytes 1-31: ub_buffer[255:248]=byte1, ..., ub_buffer[7:0]=byte31
-                        // rx_data = byte32 (will be added to buffer at end of cycle)
-                        // For ub_wr_data, we need to reverse: oldest first
+                        // CORRECTED byte ordering: byte 0 at [7:0], byte 31 at [255:248]
+                        // After 31 bytes received, buffer state is:
+                        //   [255:248]=byte30, [247:240]=byte29, ..., [23:16]=byte1, [15:8]=byte0, [7:0]=0
+                        // rx_data = byte 31
+                        // We need: [7:0]=byte0, [15:8]=byte1, ..., [247:240]=byte30, [255:248]=byte31
                         ub_wr_data <= {
-                            ub_buffer[255:248], ub_buffer[247:240], ub_buffer[239:232], ub_buffer[231:224], // bytes 1-4
-                            ub_buffer[223:216], ub_buffer[215:208], ub_buffer[207:200], ub_buffer[199:192], // bytes 5-8
-                            ub_buffer[191:184], ub_buffer[183:176], ub_buffer[175:168], ub_buffer[167:160], // bytes 9-12
-                            ub_buffer[159:152], ub_buffer[151:144], ub_buffer[143:136], ub_buffer[135:128], // bytes 13-16
-                            ub_buffer[127:120], ub_buffer[119:112], ub_buffer[111:104], ub_buffer[103:96], // bytes 17-20
-                            ub_buffer[95:88],  ub_buffer[87:80],   ub_buffer[79:72],   ub_buffer[71:64], // bytes 21-24
-                            ub_buffer[63:56],  ub_buffer[55:48],   ub_buffer[47:40],   ub_buffer[39:32], // bytes 25-28
-                            ub_buffer[31:24],  ub_buffer[23:16],   ub_buffer[15:8],    rx_data          // bytes 29-32
+                            rx_data,             ub_buffer[255:248], ub_buffer[247:240], ub_buffer[239:232], // byte31,30,29,28 -> [255:224]
+                            ub_buffer[231:224],  ub_buffer[223:216], ub_buffer[215:208], ub_buffer[207:200], // byte27,26,25,24 -> [223:192]
+                            ub_buffer[199:192],  ub_buffer[191:184], ub_buffer[183:176], ub_buffer[175:168], // byte23,22,21,20 -> [191:160]
+                            ub_buffer[167:160],  ub_buffer[159:152], ub_buffer[151:144], ub_buffer[143:136], // byte19,18,17,16 -> [159:128]
+                            ub_buffer[135:128],  ub_buffer[127:120], ub_buffer[119:112], ub_buffer[111:104], // byte15,14,13,12 -> [127:96]
+                            ub_buffer[103:96],   ub_buffer[95:88],   ub_buffer[87:80],   ub_buffer[79:72],   // byte11,10,9,8 -> [95:64]
+                            ub_buffer[71:64],    ub_buffer[63:56],   ub_buffer[55:48],   ub_buffer[47:40],   // byte7,6,5,4 -> [63:32]
+                            ub_buffer[39:32],    ub_buffer[31:24],   ub_buffer[23:16],   ub_buffer[15:8]     // byte3,2,1,0 -> [31:0]
                         };
-                        // For last_ub_write_data (used by READ_UB), reverse the ENTIRE buffer byte-by-byte
-                        // The 4-byte path reverses: {ub_buffer[31:24], ub_buffer[23:16], ub_buffer[15:8], rx_data}
-                        // This puts byte1 (at [31:24]) -> [7:0], byte4 (rx_data) -> [31:24]
-                        // For 32 bytes, we need to reverse the entire 256-bit buffer
-                        // OLD ub_buffer: [255:248]=byte1, [247:240]=byte2, ..., [7:0]=byte31
-                        // We want: byte1 at [7:0], byte2 at [15:8], ..., byte32 at [255:248]
-                        // So: [7:0] = ub_buffer[255:248] (byte1), [15:8] = ub_buffer[247:240] (byte2), ..., [255:248] = rx_data (byte32)
-                        // Match the 4-byte path EXACTLY: {ub_buffer[31:24], ub_buffer[23:16], ub_buffer[15:8], rx_data}
-                        // For 32 bytes: {ub_buffer[255:248], ub_buffer[247:240], ..., ub_buffer[7:0], rx_data}
-                        // This gives: {byte1, byte2, ..., byte31, byte32} with byte1 at [7:0]
-                        // OLD ub_buffer: [255:248]=byte1, [247:240]=byte2, ..., [7:0]=byte31
+                        // CORRECTED last_ub_write_data: same ordering as ub_wr_data
                         last_ub_write_data <= {
-                            ub_buffer[255:248], ub_buffer[247:240], ub_buffer[239:232], ub_buffer[231:224], // bytes 1-4: byte1, byte2, byte3, byte4
-                            ub_buffer[223:216], ub_buffer[215:208], ub_buffer[207:200], ub_buffer[199:192], // bytes 5-8: byte5, byte6, byte7, byte8
-                            ub_buffer[191:184], ub_buffer[183:176], ub_buffer[175:168], ub_buffer[167:160], // bytes 9-12: byte9, byte10, byte11, byte12
-                            ub_buffer[159:152], ub_buffer[151:144], ub_buffer[143:136], ub_buffer[135:128], // bytes 13-16: byte13, byte14, byte15, byte16
-                            ub_buffer[127:120], ub_buffer[119:112], ub_buffer[111:104], ub_buffer[103:96], // bytes 17-20: byte17, byte18, byte19, byte20
-                            ub_buffer[95:88],  ub_buffer[87:80],   ub_buffer[79:72],   ub_buffer[71:64], // bytes 21-24: byte21, byte22, byte23, byte24
-                            ub_buffer[63:56],  ub_buffer[55:48],   ub_buffer[47:40],   ub_buffer[39:32], // bytes 25-28: byte25, byte26, byte27, byte28
-                            ub_buffer[31:24],  ub_buffer[23:16],   ub_buffer[15:8],    rx_data          // bytes 29-32: byte29, byte30, byte31, byte32
-                        };  // Store for READ_UB (byte1 at [7:0], byte32 at [255:248])
+                            rx_data,             ub_buffer[255:248], ub_buffer[247:240], ub_buffer[239:232],
+                            ub_buffer[231:224],  ub_buffer[223:216], ub_buffer[215:208], ub_buffer[207:200],
+                            ub_buffer[199:192],  ub_buffer[191:184], ub_buffer[183:176], ub_buffer[175:168],
+                            ub_buffer[167:160],  ub_buffer[159:152], ub_buffer[151:144], ub_buffer[143:136],
+                            ub_buffer[135:128],  ub_buffer[127:120], ub_buffer[119:112], ub_buffer[111:104],
+                            ub_buffer[103:96],   ub_buffer[95:88],   ub_buffer[87:80],   ub_buffer[79:72],
+                            ub_buffer[71:64],    ub_buffer[63:56],   ub_buffer[55:48],   ub_buffer[47:40],
+                            ub_buffer[39:32],    ub_buffer[31:24],   ub_buffer[23:16],   ub_buffer[15:8]
+                        };
                         last_ub_write_addr <= addr_lo;
 
                         // Debug instrumentation: Capture buffer state at 32-byte write
