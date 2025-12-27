@@ -73,3 +73,21 @@ vivado*.backup.*
 # Archive directory (optional)
 # archive/
 
+# Large third-party directories (should be git submodules or excluded)
+nextpnr-xilinx/
+openXC7-TetriSaraj/
+squashfs-root/
+toolchain-installer/
+tpu_vivado_package.tar.gz
+yosys_0.38_amd64.snap
+
+# Virtual environments
+venv/
+tpu_env/
+env/
+
+# Old build artifacts
+*.edif
+*.json
+*.fasm
+

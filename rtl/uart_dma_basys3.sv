@@ -372,7 +372,7 @@ always @(posedge clk or negedge rst_n) begin
                 debug_ub_buffer_lsb <= ub_buffer[7:0];
                 debug_ub_buffer_msb <= ub_buffer[255:248];
 
-                // When we have 32 bytes, write to UB
+                    // When we have 32 bytes, write to UB
                 // Check BEFORE increment: when byte_index is 30, we've received 31 bytes, next is 32nd
                 // At this point: ub_buffer has bytes 1-31, rx_data will be byte 32
                 if (byte_index == 5'd30) begin
@@ -391,9 +391,14 @@ always @(posedge clk or negedge rst_n) begin
                             ub_buffer[63:56],  ub_buffer[55:48],   ub_buffer[47:40],   ub_buffer[39:32], // bytes 25-28
                             ub_buffer[31:24],  ub_buffer[23:16],   ub_buffer[15:8],    rx_data          // bytes 29-32
                         };
-                        // For last_ub_write_data (used by READ_UB), use the EXACT same pattern as 4-byte path
-                        // 4-byte path: {ub_buffer[31:24], ub_buffer[23:16], ub_buffer[15:8], rx_data}
-                        // This gives: {byte1, byte2, byte3, byte4} with byte1 at [7:0]
+                        // For last_ub_write_data (used by READ_UB), reverse the ENTIRE buffer byte-by-byte
+                        // The 4-byte path reverses: {ub_buffer[31:24], ub_buffer[23:16], ub_buffer[15:8], rx_data}
+                        // This puts byte1 (at [31:24]) -> [7:0], byte4 (rx_data) -> [31:24]
+                        // For 32 bytes, we need to reverse the entire 256-bit buffer
+                        // OLD ub_buffer: [255:248]=byte1, [247:240]=byte2, ..., [7:0]=byte31
+                        // We want: byte1 at [7:0], byte2 at [15:8], ..., byte32 at [255:248]
+                        // So: [7:0] = ub_buffer[255:248] (byte1), [15:8] = ub_buffer[247:240] (byte2), ..., [255:248] = rx_data (byte32)
+                        // Match the 4-byte path EXACTLY: {ub_buffer[31:24], ub_buffer[23:16], ub_buffer[15:8], rx_data}
                         // For 32 bytes: {ub_buffer[255:248], ub_buffer[247:240], ..., ub_buffer[7:0], rx_data}
                         // This gives: {byte1, byte2, ..., byte31, byte32} with byte1 at [7:0]
                         // OLD ub_buffer: [255:248]=byte1, [247:240]=byte2, ..., [7:0]=byte31
@@ -423,7 +428,7 @@ always @(posedge clk or negedge rst_n) begin
 
                         addr_lo <= addr_lo + 1;  // Increment address
                         byte_index <= 5'd0;
-                end
+                    end
 
                 // Check if we've received all expected bytes (partial write path)
                 // Note: byte_count and byte_index are incremented BEFORE this check
@@ -432,8 +437,8 @@ always @(posedge clk or negedge rst_n) begin
                 // Only execute if we haven't already written 32 bytes (byte_index != 30 means we have < 32 bytes)
                 if (byte_count >= length && byte_index != 5'd30) begin
                     // Always write the accumulated data
-                    ub_wr_en <= 1'b1;
-                    ub_wr_addr <= addr_lo;
+                            ub_wr_en <= 1'b1;
+                            ub_wr_addr <= addr_lo;
                     // ub_buffer is built as {newest, ..., oldest}
                     // So ub_buffer[7:0] = last byte, ub_buffer[15:8] = second-to-last, etc.
                     // For READ_UB, we want to send in the order received (oldest first)
@@ -576,7 +581,7 @@ always @(posedge clk or negedge rst_n) begin
                     if (!read_ub_initialized) begin
                         // Initialize on first entry - load data from Unified Buffer
                         read_buffer <= last_ub_write_data;  // For now, use last written data
-                        read_index <= 8'd0;
+                    read_index <= 8'd0;
                         byte_count <= 16'd0;  // Start at 0
                         tx_valid <= 1'b0;  // Don't assert yet
                         read_ub_initialized <= 1'b1;  // Mark as initialized
@@ -590,7 +595,7 @@ always @(posedge clk or negedge rst_n) begin
                         // Byte was just accepted by TX module - advance to next byte
                         tx_valid <= 1'b0;
                         read_buffer <= {8'h00, read_buffer[255:8]};  // Shift buffer RIGHT
-                        read_index <= read_index + 1;
+                    read_index <= read_index + 1;
                         byte_count <= byte_count + 1;  // Increment count of bytes sent
                         debug_last_tx_byte <= read_buffer[7:0];  // Debug: what was sent
 
@@ -648,9 +653,9 @@ always @(posedge clk or negedge rst_n) begin
                     // Status byte format: [7:6]=00, [5]=ub_done, [4]=ub_busy, 
                     //                     [3]=vpu_done, [2]=vpu_busy, [1]=sys_done, [0]=sys_busy
                     // 0x20 = all idle (0b00100000) means ub_done=1, all others=0
-                    if (tx_ready) begin
-                        tx_valid <= 1'b1;
-                        tx_data <= {2'b00, ub_done, ub_busy, vpu_done, vpu_busy, sys_done, sys_busy};
+                if (tx_ready) begin
+                    tx_valid <= 1'b1;
+                    tx_data <= {2'b00, ub_done, ub_busy, vpu_done, vpu_busy, sys_done, sys_busy};
                         debug_tx_count <= debug_tx_count + 1;
                         debug_last_tx_byte <= {2'b00, ub_done, ub_busy, vpu_done, vpu_busy, sys_done, sys_busy};  // Track what we're sending
                         state <= IDLE;
@@ -715,7 +720,7 @@ always @(posedge clk or negedge rst_n) begin
                         default: begin
                             tx_valid <= 1'b0;
                             byte_count <= 16'd0;
-                            state <= IDLE;
+                    state <= IDLE;
                         end
                     endcase
                 end else begin
