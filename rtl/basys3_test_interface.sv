@@ -371,8 +371,9 @@ always_ff @(posedge clk or negedge rst_n) begin
     end
 end
 
-// ub_rd_addr multiplexing
-assign ub_rd_addr = uart_active ? uart_ub_rd_addr : phys_ub_rd_addr_reg;
+// ub_rd_addr multiplexing (extend phys address to 9 bits)
+assign ub_rd_addr = uart_active ? uart_ub_rd_addr : {1'b0, phys_ub_rd_addr_reg};
+assign ub_rd_count = uart_active ? uart_ub_rd_count : 9'd1;  // Physical interface reads 1 word at a time
 
 // ============================================================================
 // UART DMA INTERFACE (Improved with Streaming Mode)
@@ -383,7 +384,8 @@ logic uart_ub_wr_en;
 logic [7:0] uart_ub_wr_addr;
 logic [255:0] uart_ub_wr_data;
 logic uart_ub_rd_en;
-logic [7:0] uart_ub_rd_addr;
+logic [8:0] uart_ub_rd_addr;
+logic [8:0] uart_ub_rd_count;
 logic [255:0] uart_ub_rd_data;
 logic uart_wt_wr_en;
 logic [9:0] uart_wt_wr_addr;
@@ -414,7 +416,9 @@ uart_dma_basys3 uart_dma (
     .ub_wr_data(uart_ub_wr_data),
     .ub_rd_en(uart_ub_rd_en),
     .ub_rd_addr(uart_ub_rd_addr),
+    .ub_rd_count(uart_ub_rd_count),
     .ub_rd_data(ub_rd_data),  // Read from UB
+    .ub_rd_valid(ub_rd_valid),  // Read valid signal from UB
     .wt_wr_en(uart_wt_wr_en),
     .wt_wr_addr(uart_wt_wr_addr),
     .wt_wr_data(uart_wt_wr_data),
@@ -480,7 +484,7 @@ assign ub_wr_addr = uart_active ? uart_ub_wr_addr : phys_ub_wr_addr;
 assign ub_wr_data = uart_active ? uart_ub_wr_data : phys_ub_wr_data;
 
 assign ub_rd_en = uart_active ? uart_ub_rd_en : phys_ub_rd_en;
-assign ub_rd_addr = uart_active ? uart_ub_rd_addr : phys_ub_rd_addr_reg;
+// ub_rd_addr and ub_rd_count already assigned above (near line 376)
 
 assign wt_wr_en = uart_active ? uart_wt_wr_en : phys_wt_wr_en;
 assign wt_wr_addr = uart_active ? uart_wt_wr_addr : phys_wt_wr_addr;

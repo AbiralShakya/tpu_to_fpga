@@ -4,85 +4,87 @@ module uart_dma_basys3 #(
     parameter CLOCK_FREQ = 100_000_000,  // 100 MHz
     parameter BAUD_RATE  = 115200
 )(
-    input wire clk,
-    input wire rst_n,
+    input logic clk,
+    input logic rst_n,
 
     // UART Interface (to PC)
-    input wire  uart_rx,
-    output wire uart_tx,
+    input logic  uart_rx,
+    output logic uart_tx,
 
     // To Unified Buffer (dual-port)
-    output reg        ub_wr_en,
-    output reg [7:0]  ub_wr_addr,
-    output reg [255:0] ub_wr_data,    // 32 bytes at once
-    output reg        ub_rd_en,
-    output reg [7:0]  ub_rd_addr,
-    input wire [255:0] ub_rd_data,
+    output logic        ub_wr_en,
+    output logic [7:0]  ub_wr_addr,
+    output logic [255:0] ub_wr_data,    // 32 bytes at once
+    output logic        ub_rd_en,
+    output logic [8:0]  ub_rd_addr,     // 9-bit address for unified buffer
+    output logic [8:0]  ub_rd_count,    // Burst count (number of 256-bit words)
+    input logic [255:0] ub_rd_data,
+    input logic         ub_rd_valid,    // Read data valid signal
 
     // To Weight Memory
-    output reg        wt_wr_en,
-    output reg [9:0]  wt_wr_addr,
-    output reg [63:0] wt_wr_data,     // 8 bytes at once
+    output logic        wt_wr_en,
+    output logic [9:0]  wt_wr_addr,
+    output logic [63:0] wt_wr_data,     // 8 bytes at once
 
     // To Instruction Buffer
-    output reg        instr_wr_en,
-    output reg [4:0]  instr_wr_addr,
-    output reg [31:0] instr_wr_data,
+    output logic        instr_wr_en,
+    output logic [4:0]  instr_wr_addr,
+    output logic [31:0] instr_wr_data,
 
     // To Controller
-    output reg        start_execution, // Pulse to start
+    output logic        start_execution, // Pulse to start
 
     // From Datapath (status)
-    input wire        sys_busy,
-    input wire        sys_done,
-    input wire        vpu_busy,
-    input wire        vpu_done,
-    input wire        ub_busy,
-    input wire        ub_done,
+    input logic        sys_busy,
+    input logic        sys_done,
+    input logic        vpu_busy,
+    input logic        vpu_done,
+    input logic        ub_busy,
+    input logic        ub_done,
 
     // Debug outputs
-    output reg [7:0]  debug_state,
-    output reg [7:0]  debug_cmd,
-    output reg [15:0] debug_byte_count,
+    output logic [7:0]  debug_state,
+    output logic [7:0]  debug_cmd,
+    output logic [15:0] debug_byte_count,
     
     // Debug counters for instrumentation
-    output reg [31:0] debug_rx_count,      // Count of bytes received
-    output reg [31:0] debug_tx_count,      // Count of bytes transmitted
-    output reg [31:0] debug_state_changes, // Count of state transitions
-    output reg [7:0]  debug_last_rx_byte,  // Last byte received
-    output reg        debug_rx_valid_pulse, // Pulse when rx_valid goes high
-    output reg        debug_reset_state,    // Current reset state (inverted)
-    output reg [31:0] debug_framing_error_count, // Count of framing errors
-    output reg [7:0]  debug_last_tx_byte,   // Last byte transmitted (for debugging)
+    output logic [31:0] debug_rx_count,      // Count of bytes received
+    output logic [31:0] debug_tx_count,      // Count of bytes transmitted
+    output logic [31:0] debug_state_changes, // Count of state transitions
+    output logic [7:0]  debug_last_rx_byte,  // Last byte received
+    output logic        debug_rx_valid_pulse, // Pulse when rx_valid goes high
+    output logic        debug_reset_state,    // Current reset state (inverted)
+    output logic [31:0] debug_framing_error_count, // Count of framing errors
+    output logic [7:0]  debug_last_tx_byte,   // Last byte transmitted (for debugging)
     // Additional READ_UB debug signals
-    output reg        debug_read_ub_tx_ready,  // Track tx_ready in READ_UB
-    output reg        debug_read_ub_tx_valid, // Track tx_valid in READ_UB
-    output reg [15:0] debug_read_ub_length,   // Track length in READ_UB
-    output reg [15:0] debug_read_ub_byte_count, // Track byte_count in READ_UB
-    output reg [7:0]  debug_read_ub_buffer_lsb, // Track read_buffer[7:0] in READ_UB
+    output logic        debug_read_ub_tx_ready,  // Track tx_ready in READ_UB
+    output logic        debug_read_ub_tx_valid, // Track tx_valid in READ_UB
+    output logic [15:0] debug_read_ub_length,   // Track length in READ_UB
+    output logic [15:0] debug_read_ub_byte_count, // Track byte_count in READ_UB
+    output logic [7:0]  debug_read_ub_buffer_lsb, // Track read_buffer[7:0] in READ_UB
     // WRITE_UB debug signals
-    output reg        debug_write_ub_rx_valid, // Track rx_valid in WRITE_UB
-    output reg [7:0]  debug_write_ub_rx_data,  // Track rx_data in WRITE_UB
-    output reg [15:0] debug_write_ub_byte_count, // Track byte_count in WRITE_UB
-    output reg [7:0]  debug_ub_buffer_lsb,     // Track ub_buffer[7:0] in WRITE_UB
-    output reg [7:0]  debug_ub_buffer_msb,     // Track ub_buffer[255:248] in WRITE_UB
+    output logic        debug_write_ub_rx_valid, // Track rx_valid in WRITE_UB
+    output logic [7:0]  debug_write_ub_rx_data,  // Track rx_data in WRITE_UB
+    output logic [15:0] debug_write_ub_byte_count, // Track byte_count in WRITE_UB
+    output logic [7:0]  debug_ub_buffer_lsb,     // Track ub_buffer[7:0] in WRITE_UB
+    output logic [7:0]  debug_ub_buffer_msb,     // Track ub_buffer[255:248] in WRITE_UB
     // Debug instrumentation for 32-byte buffer analysis
-    output reg [31:0] debug_ub_buffer_bytes_0_3,   // ub_buffer[31:0] when byte_index==30
-    output reg [31:0] debug_ub_buffer_bytes_28_31, // ub_buffer[255:224] when byte_index==30
-    output reg [31:0] debug_last_write_bytes_0_3,  // last_ub_write_data[31:0] after construction
-    output reg [31:0] debug_last_write_bytes_28_31, // last_ub_write_data[255:224] after construction
-    output reg [31:0] debug_read_buffer_bytes_0_3, // read_buffer[31:0] when READ_UB initializes
-    output reg [31:0] debug_read_buffer_bytes_28_31 // read_buffer[255:224] when READ_UB initializes
+    output logic [31:0] debug_ub_buffer_bytes_0_3,   // ub_buffer[31:0] when byte_index==30
+    output logic [31:0] debug_ub_buffer_bytes_28_31, // ub_buffer[255:224] when byte_index==30
+    output logic [31:0] debug_last_write_bytes_0_3,  // last_ub_write_data[31:0] after construction
+    output logic [31:0] debug_last_write_bytes_28_31, // last_ub_write_data[255:224] after construction
+    output logic [31:0] debug_read_buffer_bytes_0_3, // read_buffer[31:0] when READ_UB initializes
+    output logic [31:0] debug_read_buffer_bytes_28_31 // read_buffer[255:224] when READ_UB initializes
 );
 
 // ============================================================================
 // UART RX/TX Instances
 // ============================================================================
 
-wire [7:0] rx_data;
-wire rx_valid;
-wire rx_ready;
-wire rx_framing_error;
+logic [7:0] rx_data;
+logic rx_valid;
+logic rx_ready;
+logic rx_framing_error;
 
 uart_rx_improved #(
     .CLOCK_FREQ(CLOCK_FREQ),
@@ -97,9 +99,9 @@ uart_rx_improved #(
     .rx_ready(rx_ready)
 );
 
-reg [7:0] tx_data;
-reg tx_valid;
-wire tx_ready;
+logic [7:0] tx_data;
+logic tx_valid;
+logic tx_ready;
 
 uart_tx #(
     .CLOCK_FREQ(CLOCK_FREQ),
@@ -131,33 +133,32 @@ localparam SEND_STATUS    = 8'd10;
 localparam EXECUTE        = 8'd11;
 localparam READ_DEBUG     = 8'd20;  // Debug command to read debug counters
 
-reg [7:0] state;
-reg [7:0] command;
-reg [7:0] addr_hi;
-reg [7:0] addr_lo;
-reg [15:0] length;
-reg [15:0] byte_count;
-reg [4:0] byte_index;  // For building up 32-byte writes
+logic [7:0] state;
+logic [7:0] command;
+logic [7:0] addr_hi;
+logic [7:0] addr_lo;
+logic [15:0] length;
+logic [15:0] byte_count;
+logic [4:0] byte_index;  // For building up 32-byte writes
 
 // Temporary buffers for accumulating bytes
-reg [255:0] ub_buffer;
-reg [63:0]  wt_buffer;
-reg [31:0]  instr_buffer;
+logic [255:0] ub_buffer;
+logic [63:0]  wt_buffer;
+logic [31:0]  instr_buffer;
 
 // Read buffer for sending data back
-reg [255:0] read_buffer;
-reg [7:0]   read_index;
-reg         read_ub_initialized;  // Flag to track if READ_UB has been initialized
-reg [1:0]   read_ub_wait_count;   // Counter to wait for Unified Buffer read (0=wait, 1=ready)
-reg [255:0] ub_rd_data_reg;  // Registered version of ub_rd_data to handle read latency
+logic [255:0] read_buffer;
+logic [7:0]   read_index;
+logic         read_ub_initialized;  // Flag to track if READ_UB has been initialized
+logic         read_ub_wait_valid;   // Flag to wait for ub_rd_valid signal
 
 // Debug: store last written data
-reg [255:0] last_ub_write_data;
-reg [7:0]   last_ub_write_addr;
+logic [255:0] last_ub_write_data;
+logic [7:0]   last_ub_write_addr;
 
 // #region agent log - Debug instrumentation for tracking events
-reg rx_valid_prev;
-reg [7:0] state_prev;
+logic rx_valid_prev;
+logic [7:0] state_prev;
 // #endregion
 
 always @(posedge clk or negedge rst_n) begin
@@ -174,6 +175,8 @@ always @(posedge clk or negedge rst_n) begin
 
         ub_wr_en <= 1'b0;
         ub_rd_en <= 1'b0;
+        ub_rd_addr <= 9'h0;
+        ub_rd_count <= 9'h0;
         wt_wr_en <= 1'b0;
         instr_wr_en <= 1'b0;
         start_execution <= 1'b0;
@@ -181,8 +184,7 @@ always @(posedge clk or negedge rst_n) begin
         read_buffer <= 256'h0;
         read_index <= 8'h0;
         read_ub_initialized <= 1'b0;
-        read_ub_wait_count <= 2'd0;
-        ub_rd_data_reg <= 256'h0;
+        read_ub_wait_valid <= 1'b0;
 
         tx_valid <= 1'b0;
 
@@ -246,11 +248,14 @@ always @(posedge clk or negedge rst_n) begin
         end
         // #endregion
         
-        // Default: clear write enables
+        // Default: clear write/read enables
         ub_wr_en <= 1'b0;
         wt_wr_en <= 1'b0;
         instr_wr_en <= 1'b0;
-        ub_rd_en <= 1'b0;
+        // READ_UB state will set ub_rd_en=1 while waiting for ub_rd_valid
+        if (state != READ_UB || !read_ub_wait_valid) begin
+            ub_rd_en <= 1'b0;
+        end
         start_execution <= 1'b0;
         // Don't clear tx_valid here - let each state manage it
         // tx_valid should stay high until tx_ready is true and byte is accepted
@@ -340,12 +345,13 @@ always @(posedge clk or negedge rst_n) begin
                         8'h01: state <= WRITE_UB;
                         8'h02: state <= WRITE_WT;
                         8'h04: begin
-                            // Start read operation
+                            // Start read operation from Unified Buffer
                             ub_rd_en <= 1'b1;
-                            ub_rd_addr <= addr_lo;
+                            ub_rd_addr <= {1'b0, addr_lo};  // 9-bit address (MSB=0 for now)
+                            ub_rd_count <= 9'd1;  // Read 1 word (256 bits = 32 bytes)
                             byte_count <= 16'h0000;  // Reset byte count for READ_UB
                             read_ub_initialized <= 1'b0;  // Reset initialization flag
-                            read_ub_wait_count <= 2'd2;   // Wait 2 cycles for Unified Buffer read
+                            read_ub_wait_valid <= 1'b1;   // Wait for ub_rd_valid signal
                             state <= READ_UB;
                         end
                         default: state <= IDLE;
@@ -548,7 +554,8 @@ always @(posedge clk or negedge rst_n) begin
                     byte_count <= 16'h0000;
                     byte_index <= 5'd0;
                     read_ub_initialized <= 1'b0;  // Reset initialization flag when interrupted
-                    read_ub_wait_count <= 2'd0;   // Reset wait counter when interrupted
+                    read_ub_wait_valid <= 1'b0;   // Reset wait flag when interrupted
+                    ub_rd_en <= 1'b0;  // Clear read enable
                     
                     case (rx_data)
                         8'h01: state <= READ_ADDR_HI;  // Write UB
@@ -561,10 +568,6 @@ always @(posedge clk or negedge rst_n) begin
                         default: state <= IDLE;
                     endcase
                 end else begin
-                    // Read from Unified Buffer and send via UART
-                    // Keep ub_rd_en high until we've gotten the data
-                    // Unified Buffer state machine: RD_IDLE -> (ub_rd_en) -> RD_READ -> data ready
-                    
                     // Debug: Track READ_UB internal signals
                     debug_read_ub_tx_ready <= tx_ready;
                     debug_read_ub_tx_valid <= tx_valid;
@@ -572,30 +575,43 @@ always @(posedge clk or negedge rst_n) begin
                     debug_read_ub_byte_count <= byte_count;
                     debug_read_ub_buffer_lsb <= read_buffer[7:0];
                     
-                    // State machine priority: Initialize > Advance > Send
-                    // This ensures proper sequencing
+                    // State machine priority: Wait for valid > Initialize > Advance > Send
                     
-                    // Register ub_rd_data to handle read latency
-                    ub_rd_data_reg <= ub_rd_data;
-                    
-                    if (!read_ub_initialized) begin
-                        // Initialize on first entry - load data from Unified Buffer
-                        read_buffer <= last_ub_write_data;  // For now, use last written data
-                    read_index <= 8'd0;
-                        byte_count <= 16'd0;  // Start at 0
-                        tx_valid <= 1'b0;  // Don't assert yet
-                        read_ub_initialized <= 1'b1;  // Mark as initialized
-                        debug_last_tx_byte <= 8'hAA;  // Debug: mark READ_UB start
+                    if (read_ub_wait_valid) begin
+                        // Waiting for unified buffer to provide valid data
+                        if (ub_rd_valid) begin
+                            // Data is now valid - capture it
+                            read_buffer <= ub_rd_data;  // Capture actual data from unified buffer
+                            read_index <= 8'd0;
+                            byte_count <= 16'd0;
+                            tx_valid <= 1'b0;
+                            read_ub_wait_valid <= 1'b0;  // Done waiting
+                            read_ub_initialized <= 1'b1; // Mark as initialized
+                            ub_rd_en <= 1'b0;  // Clear read enable after data is captured
+                            debug_last_tx_byte <= 8'hAA;  // Debug: mark READ_UB data captured
+                            
+                            // Debug instrumentation: Capture read_buffer state after initialization
+                            debug_read_buffer_bytes_0_3 <= ub_rd_data[31:0];      // First 4 bytes
+                            debug_read_buffer_bytes_28_31 <= ub_rd_data[255:224]; // Last 4 bytes
+                        end
+                        // Otherwise keep waiting with ub_rd_en high
+                    end else if (!read_ub_initialized) begin
+                        // This should not happen - we should always wait for valid first
+                        // But just in case, fall back to last written data
+                        read_buffer <= last_ub_write_data;
+                        read_index <= 8'd0;
+                        byte_count <= 16'd0;
+                        tx_valid <= 1'b0;
+                        read_ub_initialized <= 1'b1;
+                        debug_last_tx_byte <= 8'hEE;  // Debug: fallback path
                         
-                        // Debug instrumentation: Capture read_buffer state after initialization
-                        // Note: read_buffer is updated at end of cycle, so we capture last_ub_write_data
-                        debug_read_buffer_bytes_0_3 <= last_ub_write_data[31:0];      // First 4 bytes
-                        debug_read_buffer_bytes_28_31 <= last_ub_write_data[255:224]; // Last 4 bytes
+                        debug_read_buffer_bytes_0_3 <= last_ub_write_data[31:0];
+                        debug_read_buffer_bytes_28_31 <= last_ub_write_data[255:224];
                     end else if (tx_ready && tx_valid) begin
                         // Byte was just accepted by TX module - advance to next byte
                         tx_valid <= 1'b0;
                         read_buffer <= {8'h00, read_buffer[255:8]};  // Shift buffer RIGHT
-                    read_index <= read_index + 1;
+                        read_index <= read_index + 1;
                         byte_count <= byte_count + 1;  // Increment count of bytes sent
                         debug_last_tx_byte <= read_buffer[7:0];  // Debug: what was sent
 
@@ -605,7 +621,7 @@ always @(posedge clk or negedge rst_n) begin
                             state <= IDLE;
                             byte_count <= 16'd0;
                             read_ub_initialized <= 1'b0;  // Reset for next READ_UB
-                            read_ub_wait_count <= 2'd0;   // Reset wait counter
+                            read_ub_wait_valid <= 1'b0;   // Reset wait flag
                             debug_last_tx_byte <= 8'hBB;  // Debug: READ_UB complete
                         end
                     end else if (tx_ready && !tx_valid && byte_count < length) begin
