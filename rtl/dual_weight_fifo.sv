@@ -8,11 +8,13 @@
 module dual_weight_fifo (
     input  logic       clk,
     input  logic       rst_n,
-    // Push interface (shared data bus filling multiple columns)
+    // Push interface (separate data for each column)
     input  logic       push_col0,
     input  logic       push_col1,
-    input  logic       push_col2,      // Our extension for 3 columns
-    input  logic [7:0] data_in,        // Shared data bus
+    input  logic       push_col2,
+    input  logic [7:0] data_in_col0,   // Weight for column 0 PEs
+    input  logic [7:0] data_in_col1,   // Weight for column 1 PEs
+    input  logic [7:0] data_in_col2,   // Weight for column 2 PEs
     // Pop interface (MMU loads weights with column staggering)
     input  logic       pop,
     output logic [7:0] col0_out,       // Direct output (combinational, no skew)
@@ -65,7 +67,7 @@ module dual_weight_fifo (
         end else begin
             // Column 0: Push and Pop (no skew)
             if (push_col0) begin
-                queue0[wr_ptr0] <= data_in;
+                queue0[wr_ptr0] <= data_in_col0;  // Use column 0 data
                 wr_ptr0 <= wr_ptr0 + 1'd1;
             end
             if (pop) begin
@@ -74,7 +76,7 @@ module dual_weight_fifo (
 
             // Column 1: Push and Pop with 1-cycle skew
             if (push_col1) begin
-                queue1[wr_ptr1] <= data_in;
+                queue1[wr_ptr1] <= data_in_col1;  // Use column 1 data
                 wr_ptr1 <= wr_ptr1 + 1'd1;
             end
             if (pop) begin
@@ -85,7 +87,7 @@ module dual_weight_fifo (
 
             // Column 2: Push and Pop with 2-cycle skew (our extension)
             if (push_col2) begin
-                queue2[wr_ptr2] <= data_in;
+                queue2[wr_ptr2] <= data_in_col2;  // Use column 2 data
                 wr_ptr2 <= wr_ptr2 + 1'd1;
             end
             if (pop) begin

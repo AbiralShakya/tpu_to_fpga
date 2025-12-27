@@ -48,7 +48,7 @@ module tpu_datapath (
     input  logic [15:0] vpu_param,       // VPU operation parameter
 
     // Data interfaces
-    input  logic [15:0] wt_fifo_data,    // Weight data input
+    input  logic [63:0] wt_fifo_data,    // Weight row data (64 bits = 8 bytes)
     input  logic [255:0] ub_wr_data,     // Unified buffer write data
     output logic [255:0] ub_rd_data,     // Unified buffer read data
     output logic        ub_rd_valid,     // Unified buffer read data valid
@@ -142,18 +142,20 @@ logic wf_push_col0, wf_push_col1, wf_push_col2;
 logic wf_pop;
 
 dual_weight_fifo weight_fifo_inst (
-    .clk       (clk),
-    .rst_n     (rst_n),
-    .push_col0 (wf_push_col0),
-    .push_col1 (wf_push_col1),
-    .push_col2 (wf_push_col2),
-    .data_in   (wt_fifo_data[7:0]),  // Use lower 8 bits for shared bus
-    .pop       (wf_pop),
-    .col0_out  (col0_wt),
-    .col1_out  (col1_wt),
-    .col2_out  (col2_wt),
-    .col1_raw  (),                  // Not used
-    .col2_raw  ()                   // Not used
+    .clk          (clk),
+    .rst_n        (rst_n),
+    .push_col0    (wf_push_col0),
+    .push_col1    (wf_push_col1),
+    .push_col2    (wf_push_col2),
+    .data_in_col0 (wt_fifo_data[7:0]),    // Byte 0 -> Column 0 weights
+    .data_in_col1 (wt_fifo_data[15:8]),   // Byte 1 -> Column 1 weights
+    .data_in_col2 (wt_fifo_data[23:16]),  // Byte 2 -> Column 2 weights
+    .pop          (wf_pop),
+    .col0_out     (col0_wt),
+    .col1_out     (col1_wt),
+    .col2_out     (col2_wt),
+    .col1_raw     (),                     // Not used
+    .col2_raw     ()                      // Not used
 );
 
 // Weight FIFO control logic

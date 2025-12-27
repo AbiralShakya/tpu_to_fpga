@@ -526,9 +526,12 @@ always @* begin
             // ================================================================
             // 0x03: RD_WEIGHT - Read Weight Data
             // ================================================================
+            // arg1 = weight row address (0, 1, 2 for 3x3 array)
+            // Reads one row from weight memory and pushes to weight FIFOs
+            // For 3x3 array, issue 3 RD_WEIGHT instructions (rows 0, 1, 2)
             RD_WEIGHT_OP: begin
                 wt_mem_rd_en    = 1'b1;
-                wt_mem_addr      = exec_arg1 * 24'd65536;  // Tile base address
+                wt_mem_addr     = {16'b0, exec_arg1};  // Direct row addressing
                 wt_fifo_wr      = 1'b1;
                 wt_num_tiles    = exec_arg2;
                 wt_buf_sel      = exec_flags[0];

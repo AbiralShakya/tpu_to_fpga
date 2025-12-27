@@ -407,9 +407,12 @@ class TPUCoprocessor:
         self.write_unified_buffer(0, input_bytes)
 
         # Create and load the compute program
-        # ISA: RD_WEIGHT(tile, count), LD_UB(addr, blocks), MATMUL(ub_in, acc_out, rows), ST_UB(addr, blocks)
+        # For 3x3 systolic array, we need to load all 3 weight rows
+        # RD_WEIGHT(row, 1) loads one row from weight memory to FIFOs
         program = [
-            self.encoder.load_weights(0, 1),        # Load weight tile 0
+            self.encoder.load_weights(0, 1),        # Load weight row 0
+            self.encoder.load_weights(1, 1),        # Load weight row 1
+            self.encoder.load_weights(2, 1),        # Load weight row 2
             self.encoder.load_ub(0, 1),             # Load input from UB addr 0
             self.encoder.matmul(0, 0, 3),           # MATMUL: ub[0] -> acc[0], 3 rows
             self.encoder.store_ub(1, 1),            # Store acc[0] result to UB addr 1
@@ -532,10 +535,12 @@ def demo_simple_inference(tpu: TPUCoprocessor):
     print(f"\n  Loading inputs to UB[0]: {input_bytes[:8].hex()}")
     tpu.write_unified_buffer(0, input_bytes)
 
-    # Create compute program
+    # Create compute program - load all 3 weight rows for 3x3 array
     enc = InstructionEncoder()
     program = [
-        enc.load_weights(0, 1),         # RD_WEIGHT: Load weight tile 0
+        enc.load_weights(0, 1),         # RD_WEIGHT: Load weight row 0
+        enc.load_weights(1, 1),         # RD_WEIGHT: Load weight row 1
+        enc.load_weights(2, 1),         # RD_WEIGHT: Load weight row 2
         enc.load_ub(0, 1),              # LD_UB: Load input from UB[0]
         enc.matmul(0, 0, 3),            # MATMUL: ub[0] -> acc[0], 3 rows
         enc.store_ub(1, 1),             # ST_UB: Store acc to UB[1]
@@ -607,7 +612,9 @@ def demo_streaming_inference(tpu: TPUCoprocessor):
     # Pre-load program (stays in instruction memory)
     enc = InstructionEncoder()
     program = [
-        enc.load_weights(0, 1),     # RD_WEIGHT: Load weight tile 0
+        enc.load_weights(0, 1),     # RD_WEIGHT: Load weight row 0
+        enc.load_weights(1, 1),     # RD_WEIGHT: Load weight row 1
+        enc.load_weights(2, 1),     # RD_WEIGHT: Load weight row 2
         enc.load_ub(0, 1),          # LD_UB: Load input from UB[0]
         enc.matmul(0, 0, 3),        # MATMUL: ub[0] -> acc[0], 3 rows
         enc.store_ub(1, 1),         # ST_UB: Store acc to UB[1]

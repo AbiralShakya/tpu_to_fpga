@@ -117,7 +117,7 @@ logic        ub_busy;  // Unified buffer busy
 // DATAPATH DATA INTERFACES
 // =============================================================================
 
-logic [15:0] wt_fifo_data;
+logic [63:0] wt_fifo_data;  // Full weight row (8 bytes, use bytes 0-2 for 3 columns)
 logic [255:0] ub_wr_data;
 logic [255:0] ub_rd_data;
 logic        ub_rd_valid;  // Unified buffer read data valid
@@ -194,6 +194,28 @@ end
 
 // Instruction memory read port (to controller) - combinational read
 assign instr_data = instruction_memory[instr_addr[4:0]];
+
+// =============================================================================
+// WEIGHT MEMORY (256 x 64-bit = 2KB)
+// =============================================================================
+// Stores weight rows. Each row is 64 bits (8 bytes).
+// For 3x3 matrix: bytes 0,1,2 are the 3 weights per row.
+// UART WRITE_WT stores weights, RD_WEIGHT instruction reads them.
+
+(* ram_style = "block" *) logic [63:0] weight_memory [0:255];
+logic [63:0] wt_mem_rd_data;  // Data read from weight memory
+
+// Weight memory write port (from UART DMA)
+always @(posedge clk) begin
+    if (test_wt_wr_en) begin
+        weight_memory[test_wt_wr_addr[7:0]] <= test_wt_wr_data;
+    end
+end
+
+// Weight memory read port (for RD_WEIGHT instruction)
+// Combinational read - data available immediately when address is set
+// Using lower 8 bits of wt_mem_addr as row address
+assign wt_mem_rd_data = weight_memory[wt_mem_addr[7:0]];
 
 // =============================================================================
 // CONTROLLER INSTANCE
@@ -439,7 +461,9 @@ assign ub_rd_count = use_test_interface ? test_ub_rd_count : ctrl_ub_rd_count;
 assign ub_buf_sel = use_test_interface ? (test_ub_wr_en ? 1'b1 : 1'b0) : ctrl_ub_buf_sel;
 
 // Weight FIFO data (from TEST INTERFACE or legacy DMA)
-assign wt_fifo_data = use_test_interface ? test_wt_wr_data[15:0] : dma_data_in[15:0];
+// Weight data comes from weight memory during RD_WEIGHT execution
+// wt_mem_rd_data contains the full 64-bit row read from weight memory
+assign wt_fifo_data = wt_mem_rd_data;
 
 // Legacy DMA control signals
 assign dma_start = dma_start_in;
