@@ -53,6 +53,9 @@ module tpu_datapath (
     output logic [255:0] ub_rd_data,     // Unified buffer read data
     output logic        ub_rd_valid,     // Unified buffer read data valid
 
+    // Accumulator output for ST_UB (systolic array results)
+    output logic [255:0] acc_data_out,   // Packed accumulator outputs for UB write
+
     // Status outputs to controller
     output logic        sys_busy,
     output logic        sys_done,
@@ -359,5 +362,12 @@ assign wt_rd_en = systolic_active && !wt_rd_empty;
 // For now, DMA operations complete immediately
 assign dma_busy = 1'b0;
 assign dma_done = 1'b1;
+
+// =============================================================================
+// ACCUMULATOR OUTPUT FOR ST_UB
+// =============================================================================
+// Pack the three 32-bit accumulator outputs into a 256-bit word for UB write
+// Layout: [255:96]=0 padding, [95:64]=acc2, [63:32]=acc1, [31:0]=acc0
+assign acc_data_out = {160'b0, acc2_out, acc1_out, acc0_out};
 
 endmodule

@@ -121,6 +121,7 @@ logic [15:0] wt_fifo_data;
 logic [255:0] ub_wr_data;
 logic [255:0] ub_rd_data;
 logic        ub_rd_valid;  // Unified buffer read data valid
+logic [255:0] acc_data_out; // Accumulator output for ST_UB instruction
 
 // =============================================================================
 // BASYS3 TEST INTERFACE TO DATAPATH INTERFACES
@@ -401,6 +402,7 @@ tpu_datapath datapath (
     .ub_wr_data     (ub_wr_data),
     .ub_rd_data     (ub_rd_data),
     .ub_rd_valid    (ub_rd_valid),  // Unified buffer read data valid
+    .acc_data_out   (acc_data_out), // Accumulator output for ST_UB
 
     // Status outputs to controller
     .sys_busy       (sys_busy),
@@ -424,7 +426,8 @@ logic use_test_interface;
 assign use_test_interface = test_ub_wr_en | test_ub_rd_en | test_wt_wr_en | test_instr_wr_en;
 
 // Unified Buffer connections (TEST INTERFACE takes priority for programming, otherwise CONTROLLER)
-assign ub_wr_data = use_test_interface ? {test_ub_wr_data[255:0]} : dma_data_in;
+// When controller writes (ST_UB instruction), use accumulator output; when UART writes, use test data
+assign ub_wr_data = use_test_interface ? test_ub_wr_data : acc_data_out;
 assign ub_wr_en = use_test_interface ? test_ub_wr_en : ctrl_ub_wr_en;
 assign ub_rd_en = use_test_interface ? test_ub_rd_en : ctrl_ub_rd_en;
 assign ub_wr_addr = use_test_interface ? test_ub_wr_addr : ctrl_ub_wr_addr;  // Already 9-bit
