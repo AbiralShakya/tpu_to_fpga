@@ -51,6 +51,7 @@ module tpu_datapath (
     input  logic [15:0] wt_fifo_data,    // Weight data input
     input  logic [255:0] ub_wr_data,     // Unified buffer write data
     output logic [255:0] ub_rd_data,     // Unified buffer read data
+    output logic        ub_rd_valid,     // Unified buffer read data valid
 
     // Status outputs to controller
     output logic        sys_busy,

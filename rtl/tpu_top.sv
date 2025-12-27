@@ -117,6 +117,7 @@ logic        ub_busy;  // Unified buffer busy
 logic [15:0] wt_fifo_data;
 logic [255:0] ub_wr_data;
 logic [255:0] ub_rd_data;
+logic        ub_rd_valid;  // Unified buffer read data valid
 
 // =============================================================================
 // BASYS3 TEST INTERFACE TO DATAPATH INTERFACES
@@ -126,7 +127,8 @@ logic        test_ub_wr_en;
 logic [7:0]  test_ub_wr_addr;
 logic [255:0] test_ub_wr_data;
 logic        test_ub_rd_en;
-logic [7:0]  test_ub_rd_addr;
+logic [8:0]  test_ub_rd_addr;  // 9-bit address: [8]=bank, [7:0]=address
+logic [8:0]  test_ub_rd_count; // 9-bit burst count
 logic        test_wt_wr_en;
 logic [9:0]  test_wt_wr_addr;
 logic [63:0] test_wt_wr_data;
@@ -312,7 +314,9 @@ basys3_test_interface test_interface (
     .ub_wr_data         (test_ub_wr_data),
     .ub_rd_en           (test_ub_rd_en),
     .ub_rd_addr         (test_ub_rd_addr),
+    .ub_rd_count        (test_ub_rd_count),
     .ub_rd_data         (ub_rd_data),       // From datapath UB
+    .ub_rd_valid        (ub_rd_valid),      // From datapath UB
 
     // To Weight Memory
     .wt_wr_en           (test_wt_wr_en),
@@ -391,6 +395,7 @@ tpu_datapath datapath (
     .wt_fifo_data   (wt_fifo_data),
     .ub_wr_data     (ub_wr_data),
     .ub_rd_data     (ub_rd_data),
+    .ub_rd_valid    (ub_rd_valid),  // Unified buffer read data valid
 
     // Status outputs to controller
     .sys_busy       (sys_busy),
@@ -418,9 +423,9 @@ assign ub_wr_data = use_test_interface ? {test_ub_wr_data[255:0]} : dma_data_in;
 assign ub_wr_en = use_test_interface ? test_ub_wr_en : ctrl_ub_wr_en;
 assign ub_rd_en = use_test_interface ? test_ub_rd_en : ctrl_ub_rd_en;
 assign ub_wr_addr = use_test_interface ? {1'b0, test_ub_wr_addr} : ctrl_ub_wr_addr;
-assign ub_rd_addr = use_test_interface ? {1'b0, test_ub_rd_addr} : ctrl_ub_rd_addr;
+assign ub_rd_addr = use_test_interface ? test_ub_rd_addr : ctrl_ub_rd_addr;  // test_ub_rd_addr is already 9-bit
 assign ub_wr_count = use_test_interface ? 9'd1 : ctrl_ub_wr_count;
-assign ub_rd_count = use_test_interface ? 9'd1 : ctrl_ub_rd_count;
+assign ub_rd_count = use_test_interface ? test_ub_rd_count : ctrl_ub_rd_count;  // Use test_ub_rd_count
 assign ub_buf_sel = use_test_interface ? 1'b0 : ctrl_ub_buf_sel;
 
 // Weight FIFO data (from TEST INTERFACE or legacy DMA)

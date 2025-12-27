@@ -25,8 +25,10 @@ module basys3_test_interface (
     output logic [7:0]  ub_wr_addr,
     output logic [255:0] ub_wr_data,
     output logic        ub_rd_en,
-    output logic [7:0]  ub_rd_addr,
+    output logic [8:0]  ub_rd_addr,     // 9-bit address: [8]=bank, [7:0]=address
+    output logic [8:0]  ub_rd_count,    // 9-bit burst count
     input  logic [255:0] ub_rd_data,
+    input  logic        ub_rd_valid,  // Unified buffer read data valid (handshaking)
 
     output logic        wt_wr_en,
     output logic [9:0]  wt_wr_addr,
