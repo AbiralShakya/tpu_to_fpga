@@ -4,12 +4,12 @@ module uart_tx #(
     parameter CLOCK_FREQ = 100_000_000,
     parameter BAUD_RATE  = 115200
 )(
-    input wire clk,
-    input wire rst_n,
-    output reg tx,
-    input wire [7:0] tx_data,
-    input wire tx_valid,
-    output wire tx_ready
+    input  logic       clk,
+    input  logic       rst_n,
+    output logic       tx,
+    input  logic [7:0] tx_data,
+    input  logic       tx_valid,
+    output logic       tx_ready
 );
 
 localparam CLKS_PER_BIT = CLOCK_FREQ / BAUD_RATE;
@@ -19,10 +19,10 @@ localparam START = 2'd1;
 localparam DATA  = 2'd2;
 localparam STOP  = 2'd3;
 
-reg [1:0] state;
-reg [15:0] clk_count;
-reg [2:0] bit_index;
-reg [7:0] tx_byte;
+logic [1:0] state;
+logic [15:0] clk_count;
+logic [2:0] bit_index;
+logic [7:0] tx_byte;
 
 assign tx_ready = (state == IDLE);
 

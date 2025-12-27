@@ -9,13 +9,13 @@ module uart_rx_improved #(
     parameter BAUD_RATE  = 115200,
     parameter OVERSAMPLE = 15  // Sample each bit 15 times
 )(
-    input wire clk,
-    input wire rst_n,
-    input wire rx,
-    output reg [7:0] rx_data,
-    output reg rx_valid,
-    output reg framing_error,
-    output wire rx_ready
+    input  logic       clk,
+    input  logic       rst_n,
+    input  logic       rx,
+    output logic [7:0] rx_data,
+    output logic       rx_valid,
+    output logic       framing_error,
+    output logic       rx_ready
 );
 
 // Improved baud rate calculation: Compensate for integer truncation error
@@ -37,16 +37,16 @@ localparam START = 2'd1;
 localparam DATA  = 2'd2;
 localparam STOP  = 2'd3;
 
-reg [1:0] state;
-reg [15:0] clk_count;
-reg [3:0] sample_count;  // Count samples within a bit period
-reg [2:0] bit_index;
-reg [7:0] rx_byte;
-reg [2:0] sample_buffer;  // Store middle 3 samples for majority vote
-wire [15:0] sample_threshold;  // Dynamic threshold based on sample_count
+logic [1:0] state;
+logic [15:0] clk_count;
+logic [3:0] sample_count;  // Count samples within a bit period
+logic [2:0] bit_index;
+logic [7:0] rx_byte;
+logic [2:0] sample_buffer;  // Store middle 3 samples for majority vote
+logic [15:0] sample_threshold;  // Dynamic threshold based on sample_count
 
 // Synchronize RX input (prevent metastability)
-reg rx_sync_1, rx_sync_2;
+logic rx_sync_1, rx_sync_2;
 always @(posedge clk) begin
     rx_sync_1 <= rx;
     rx_sync_2 <= rx_sync_1;

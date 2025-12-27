@@ -5,26 +5,26 @@ module unified_buffer #(
     parameter DEPTH = 128,       // 128 entries per bank = 32 KiB per bank (total 64 KiB)
     parameter ADDR_WIDTH = 8     // 8 bits for address (includes bank select bit)
 )(
-    input  wire                     clk,
-    input  wire                     rst_n,
-    input  wire                     ub_buf_sel,     // Double-buffering control
+    input  logic                    clk,
+    input  logic                    rst_n,
+    input  logic                    ub_buf_sel,     // Double-buffering control
 
     // Unified Read/Write Interface (alternates per clock cycle)
-    input  wire                     ub_rd_en,
-    input  wire [ADDR_WIDTH:0]      ub_rd_addr,     // 9-bit: [8]=bank, [7:0]=address
-    input  wire [ADDR_WIDTH:0]      ub_rd_count,    // 9-bit burst count
-    output reg [DATA_WIDTH-1:0]     ub_rd_data,
-    output reg                      ub_rd_valid,
+    input  logic                    ub_rd_en,
+    input  logic [ADDR_WIDTH:0]     ub_rd_addr,     // 9-bit: [8]=bank, [7:0]=address
+    input  logic [ADDR_WIDTH:0]     ub_rd_count,    // 9-bit burst count
+    output logic [DATA_WIDTH-1:0]   ub_rd_data,
+    output logic                    ub_rd_valid,
 
-    input  wire                     ub_wr_en,
-    input  wire [ADDR_WIDTH:0]      ub_wr_addr,     // 9-bit: [8]=bank, [7:0]=address
-    input  wire [ADDR_WIDTH:0]      ub_wr_count,    // 9-bit burst count
-    input  wire [DATA_WIDTH-1:0]    ub_wr_data,
-    output reg                      ub_wr_ready,
+    input  logic                    ub_wr_en,
+    input  logic [ADDR_WIDTH:0]     ub_wr_addr,     // 9-bit: [8]=bank, [7:0]=address
+    input  logic [ADDR_WIDTH:0]     ub_wr_count,    // 9-bit burst count
+    input  logic [DATA_WIDTH-1:0]   ub_wr_data,
+    output logic                    ub_wr_ready,
 
     // Status signals
-    output wire                     ub_busy,
-    output wire                     ub_done
+    output logic                    ub_busy,
+    output logic                    ub_done
 );
 
 // =============================================================================
@@ -32,8 +32,8 @@ module unified_buffer #(
 // =============================================================================
 
 // Two memory banks (32 KiB each = 64 KiB total)
-(* ram_style = "block" *) reg [DATA_WIDTH-1:0] memory_bank0 [0:DEPTH-1];
-(* ram_style = "block" *) reg [DATA_WIDTH-1:0] memory_bank1 [0:DEPTH-1];
+(* ram_style = "block" *) logic [DATA_WIDTH-1:0] memory_bank0 [0:DEPTH-1];
+(* ram_style = "block" *) logic [DATA_WIDTH-1:0] memory_bank1 [0:DEPTH-1];
 
 // =============================================================================
 // DOUBLE-BUFFERED READ/WRITE STATE MACHINES
@@ -44,22 +44,22 @@ localparam RD_IDLE   = 2'b00;
 localparam RD_READ   = 2'b01;
 localparam RD_BURST  = 2'b10;
 
-reg [1:0] rd_state;
-reg [ADDR_WIDTH:0] rd_burst_count;
-reg [ADDR_WIDTH:0] rd_current_addr;
-reg rd_bank_sel;  // Which bank is currently being read
+logic [1:0] rd_state;
+logic [ADDR_WIDTH:0] rd_burst_count;
+logic [ADDR_WIDTH:0] rd_current_addr;
+logic rd_bank_sel;  // Which bank is currently being read
 
 // Write state machine (other bank active for writing)
 localparam WR_IDLE   = 2'b00;
 localparam WR_WRITE  = 2'b01;
 localparam WR_BURST  = 2'b10;
 
-reg [1:0] wr_state;
-reg [ADDR_WIDTH:0] wr_burst_count;
-reg [ADDR_WIDTH:0] wr_current_addr;
-reg wr_bank_sel;  // Which bank is currently being written (combinatorial)
-reg wr_bank_sel_latched;  // Latched bank selection (captured when ub_wr_en asserted)
-reg [DATA_WIDTH-1:0] wr_data_latched;  // Latched write data (captured when ub_wr_en asserted)
+logic [1:0] wr_state;
+logic [ADDR_WIDTH:0] wr_burst_count;
+logic [ADDR_WIDTH:0] wr_current_addr;
+logic wr_bank_sel;  // Which bank is currently being written (combinatorial)
+logic wr_bank_sel_latched;  // Latched bank selection (captured when ub_wr_en asserted)
+logic [DATA_WIDTH-1:0] wr_data_latched;  // Latched write data (captured when ub_wr_en asserted)
 
 // =============================================================================
 // DOUBLE-BUFFERED READ LOGIC

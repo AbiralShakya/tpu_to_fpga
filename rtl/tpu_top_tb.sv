@@ -183,7 +183,7 @@ initial begin
 
     // Simple monitoring
     begin
-        reg [9:0] cycle_count = 0;
+        logic [9:0] cycle_count = 0;
         while (cycle_count < 1000) begin
             @(posedge clk);
             cycle_count = cycle_count + 1;

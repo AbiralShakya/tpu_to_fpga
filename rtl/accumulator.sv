@@ -23,7 +23,7 @@ logic [63:0] buffer1 [0:255];
 
 // Register buffer selection to prevent glitches during read operations
 // This ensures atomic operations - once a read starts, it completes on the same buffer
-reg acc_buf_sel_reg;
+logic acc_buf_sel_reg;
 always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         acc_buf_sel_reg <= 1'b0;

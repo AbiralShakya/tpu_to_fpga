@@ -1,94 +1,94 @@
 `timescale 1ns / 1ps
 
 module tpu_controller (
-    input  wire        clk,
-    input  wire        rst_n,
-    input  wire        start_execution, // Start program execution
+    input  logic       clk,
+    input  logic       rst_n,
+    input  logic       start_execution, // Start program execution
 
     // Instruction memory interface
-    output wire [7:0]  instr_addr,     // Instruction address to memory
-    input  wire [31:0] instr_data,     // Instruction data from memory
+    output logic [7:0] instr_addr,     // Instruction address to memory
+    input  logic [31:0] instr_data,    // Instruction data from memory
 
     // Status inputs from datapath (for hazard detection)
-    input  wire        sys_busy,
-    input  wire        vpu_busy,
-    input  wire        dma_busy,
-    input  wire        wt_busy,        // Weight FIFO busy
-    input  wire        ub_busy,        // Unified buffer busy (for buffer toggle safety)
+    input  logic       sys_busy,
+    input  logic       vpu_busy,
+    input  logic       dma_busy,
+    input  logic       wt_busy,        // Weight FIFO busy
+    input  logic       ub_busy,        // Unified buffer busy (for buffer toggle safety)
 
     // =============================================================================
     // CONTROL OUTPUTS TO DATAPATH (46 signals total)
     // =============================================================================
 
     // Pipeline/Program Control (4 signals)
-    output wire        pc_cnt,         // Program counter increment
-    output reg         pc_ld,          // Program counter load
-    output wire        ir_ld,          // Instruction register load
-    output reg         if_id_flush,    // Pipeline flush
+    output logic       pc_cnt,         // Program counter increment
+    output logic       pc_ld,          // Program counter load
+    output logic       ir_ld,          // Instruction register load
+    output logic       if_id_flush,    // Pipeline flush
 
     // Systolic Array Control (7 signals)
-    output reg         sys_start,       // Start systolic operation
-    output reg [1:0]   sys_mode,        // Operation mode (00=MatMul, 01=Conv2D, 10=Accumulate)
-    output reg [7:0]   sys_rows,         // Number of rows to process
-    output reg         sys_signed,      // Signed/unsigned arithmetic
-    output reg         sys_transpose,   // Transpose input matrix
-    output reg [7:0]   sys_acc_addr,    // Accumulator write address
-    output reg         sys_acc_clear,   // Clear accumulator before write
+    output logic       sys_start,       // Start systolic operation
+    output logic [1:0] sys_mode,        // Operation mode (00=MatMul, 01=Conv2D, 10=Accumulate)
+    output logic [7:0] sys_rows,        // Number of rows to process
+    output logic       sys_signed,      // Signed/unsigned arithmetic
+    output logic       sys_transpose,   // Transpose input matrix
+    output logic [7:0] sys_acc_addr,    // Accumulator write address
+    output logic       sys_acc_clear,   // Clear accumulator before write
 
     // Unified Buffer Control (7 signals)
-    output reg         ub_rd_en,        // UB read enable
-    output reg         ub_wr_en,        // UB write enable
-    output reg [8:0]   ub_rd_addr,      // Read address + bank select
-    output reg [8:0]   ub_wr_addr,      // Write address + bank select
-    output reg [8:0]   ub_rd_count,      // Read burst count
-    output reg [8:0]   ub_wr_count,      // Write burst count
-    output reg         ub_buf_sel,      // Bank selection toggle
+    output logic       ub_rd_en,        // UB read enable
+    output logic       ub_wr_en,        // UB write enable
+    output logic [8:0] ub_rd_addr,      // Read address + bank select
+    output logic [8:0] ub_wr_addr,      // Write address + bank select
+    output logic [8:0] ub_rd_count,     // Read burst count
+    output logic [8:0] ub_wr_count,     // Write burst count
+    output logic       ub_buf_sel,      // Bank selection toggle
 
     // Weight FIFO Control (5 signals)
-    output reg         wt_mem_rd_en,    // Read from weight DRAM
-    output reg [23:0]  wt_mem_addr,     // DRAM address
-    output reg         wt_fifo_wr,      // Weight FIFO write enable
-    output reg [7:0]   wt_num_tiles,     // Number of tiles to load
-    output reg         wt_buf_sel,      // Weight buffer selection
+    output logic       wt_mem_rd_en,    // Read from weight DRAM
+    output logic [23:0] wt_mem_addr,    // DRAM address
+    output logic       wt_fifo_wr,      // Weight FIFO write enable
+    output logic [7:0] wt_num_tiles,    // Number of tiles to load
+    output logic       wt_buf_sel,      // Weight buffer selection
 
     // Accumulator Control (4 signals)
-    output reg         acc_wr_en,       // Accumulator write enable
-    output reg         acc_rd_en,       // Accumulator read enable
-    output reg [7:0]   acc_addr,        // Accumulator address
-    output reg         acc_buf_sel,     // Accumulator buffer selection
+    output logic       acc_wr_en,       // Accumulator write enable
+    output logic       acc_rd_en,       // Accumulator read enable
+    output logic [7:0] acc_addr,        // Accumulator address
+    output logic       acc_buf_sel,     // Accumulator buffer selection
 
     // VPU Control (6 signals)
-    output reg         vpu_start,       // Start VPU operation
-    output reg [3:0]   vpu_mode,        // VPU function selection
-    output reg [7:0]   vpu_in_addr,     // VPU input address
-    output reg [7:0]   vpu_out_addr,    // VPU output address
-    output reg [7:0]   vpu_length,      // Number of elements
-    output reg [15:0]  vpu_param,       // VPU operation parameter
+    output logic       vpu_start,       // Start VPU operation
+    output logic [3:0] vpu_mode,        // VPU function selection
+    output logic [7:0] vpu_in_addr,     // VPU input address
+    output logic [7:0] vpu_out_addr,    // VPU output address
+    output logic [7:0] vpu_length,      // Number of elements
+    output logic [15:0] vpu_param,      // VPU operation parameter
 
     // DMA Control (5 signals)
-    output reg         dma_start,       // Initiate DMA transfer
-    output reg         dma_dir,         // Direction (0=host→TPU, 1=TPU→host)
-    output reg [7:0]   dma_ub_addr,     // DMA unified buffer address
-    output reg [15:0]  dma_length,      // DMA transfer length
-    output reg [1:0]   dma_elem_sz,     // Element size (00=8b, 01=16b, 10=32b)
+    output logic       dma_start,       // Initiate DMA transfer
+    output logic       dma_dir,         // Direction (0=host→TPU, 1=TPU→host)
+    output logic [7:0] dma_ub_addr,     // DMA unified buffer address
+    output logic [15:0] dma_length,     // DMA transfer length
+    output logic [1:0] dma_elem_sz,     // Element size (00=8b, 01=16b, 10=32b)
 
     // Sync/Control (3 signals)
-    output reg         sync_wait,       // Stall pipeline until completion
-    output reg [3:0]   sync_mask,       // Units to wait for (bit mask)
-    output reg [15:0]  sync_timeout,    // Maximum wait cycles
+    output logic       sync_wait,       // Stall pipeline until completion
+    output logic [3:0] sync_mask,       // Units to wait for (bit mask)
+    output logic [15:0] sync_timeout,   // Maximum wait cycles
 
     // Configuration Control (3 signals)
-    output reg         cfg_wr_en,       // Configuration register write enable
-    output reg [7:0]   cfg_addr,        // Configuration register address
-    output reg [15:0]  cfg_data,        // Data to write
+    output logic       cfg_wr_en,       // Configuration register write enable
+    output logic [7:0] cfg_addr,        // Configuration register address
+    output logic [15:0] cfg_data,       // Data to write
 
     // Halt/Interrupt (2 signals)
-    output reg         halt_req,        // Stop program execution
-    output reg         interrupt_en,    // Enable host interrupt
+    output logic       halt_req,        // Stop program execution
+    output logic       interrupt_en,    // Enable host interrupt
 
     // Pipeline status (for debugging/verification)
-    output wire        pipeline_stall,
-    output wire [1:0]  current_stage    // 2'b01: Stage1, 2'b10: Stage2
+    output logic       pipeline_stall,
+    output logic [1:0] current_stage    // 2'b01: Stage1, 2'b10: Stage2
 );
 
 // =============================================================================
@@ -130,68 +130,68 @@ localparam [OPCODE_WIDTH-1:0] HALT_OP         = 6'h3F;
 // =============================================================================
 
 // Program Counter
-reg [7:0] pc_reg;
-reg      pc_cnt_internal;  // Internal PC increment signal
+logic [7:0] pc_reg;
+logic       pc_cnt_internal;  // Internal PC increment signal
 
 // Instruction Register
-reg [31:0] ir_reg;
-reg       ir_ld_internal;  // Internal IR load signal
+logic [31:0] ir_reg;
+logic        ir_ld_internal;  // Internal IR load signal
 
 // Instruction decoding
-wire [OPCODE_WIDTH-1:0] opcode;
-wire [7:0]              arg1, arg2, arg3;
-wire [1:0]              flags;
+logic [OPCODE_WIDTH-1:0] opcode;
+logic [7:0]              arg1, arg2, arg3;
+logic [1:0]              flags;
 
 // =============================================================================
 // IF/ID PIPELINE REGISTER
 // =============================================================================
 
-reg        if_id_valid;
-reg [7:0]  if_id_pc;
-reg [OPCODE_WIDTH-1:0] if_id_opcode;
-reg [7:0]             if_id_arg1, if_id_arg2, if_id_arg3;
-reg [1:0]             if_id_flags;
+logic      if_id_valid;
+logic [7:0] if_id_pc;
+logic [OPCODE_WIDTH-1:0] if_id_opcode;
+logic [7:0]              if_id_arg1, if_id_arg2, if_id_arg3;
+logic [1:0]              if_id_flags;
 
 // Pipeline control
-wire        if_id_stall;
+logic      if_id_stall;
 
 // =============================================================================
 // STAGE 2: EXECUTE REGISTERS
 // =============================================================================
 
-reg        exec_valid;
-reg [OPCODE_WIDTH-1:0] exec_opcode;
-reg [7:0]             exec_arg1, exec_arg2, exec_arg3;
-reg [1:0]             exec_flags;
+logic      exec_valid;
+logic [OPCODE_WIDTH-1:0] exec_opcode;
+logic [7:0]              exec_arg1, exec_arg2, exec_arg3;
+logic [1:0]              exec_flags;
 
 // =============================================================================
 // BUFFER STATE TRACKING (for toggle operations)
 // =============================================================================
 
-reg        wt_buf_sel_reg;   // Current weight buffer selection
-reg        acc_buf_sel_reg;  // Current accumulator buffer selection
-reg        ub_buf_sel_reg;   // Current unified buffer bank selection
+logic      wt_buf_sel_reg;   // Current weight buffer selection
+logic      acc_buf_sel_reg;  // Current accumulator buffer selection
+logic      ub_buf_sel_reg;   // Current unified buffer bank selection
 
 // =============================================================================
 // CONFIGURATION REGISTERS
 // =============================================================================
 
-reg [15:0] cfg_registers [0:255];  // 256 configuration registers
+logic [15:0] cfg_registers [0:255];  // 256 configuration registers
 
 // =============================================================================
 // SYNC STATE MACHINE
 // =============================================================================
 
-reg        sync_active;
-reg [15:0] sync_counter;
-reg [3:0]  sync_wait_mask;
+logic      sync_active;
+logic [15:0] sync_counter;
+logic [3:0]  sync_wait_mask;
 
 // =============================================================================
 // HAZARD DETECTION
 // =============================================================================
 
-wire hazard_detected;
-wire sync_hazard;
+logic hazard_detected;
+logic sync_hazard;
 
 // =============================================================================
 // PROGRAM COUNTER LOGIC
@@ -235,9 +235,9 @@ assign flags   = ir_reg[1:0];
 // IF/ID PIPELINE REGISTER (with buffer state)
 // =============================================================================
 
-reg if_id_wt_buf_sel;
-reg if_id_acc_buf_sel;
-reg if_id_ub_buf_sel;
+logic if_id_wt_buf_sel;
+logic if_id_acc_buf_sel;
+logic if_id_ub_buf_sel;
 
 always @ (posedge clk or negedge rst_n) begin
     if (!rst_n) begin
@@ -286,7 +286,7 @@ end
 
 // Buffer toggle safety: Only toggle when no operations are active on buffers
 // This prevents corruption from toggling buffers mid-operation
-wire buffers_idle;
+logic buffers_idle;
 assign buffers_idle = !ub_busy && !wt_busy;  // Both unified buffer and weight FIFO must be idle
 
 always @ (posedge clk or negedge rst_n) begin
@@ -327,7 +327,7 @@ end
 // SYNC STATE MACHINE
 // =============================================================================
 
-wire [3:0] unit_status;
+logic [3:0] unit_status;
 assign unit_status[0] = !sys_busy;   // Systolic done
 assign unit_status[1] = !vpu_busy;   // VPU done
 assign unit_status[2] = !dma_busy;    // DMA done
@@ -374,9 +374,9 @@ assign pipeline_stall = if_id_stall;
 // STAGE 2: EXECUTE LOGIC (with pipelined buffer state)
 // =============================================================================
 
-reg exec_wt_buf_sel;
-reg exec_acc_buf_sel;
-reg exec_ub_buf_sel;
+logic exec_wt_buf_sel;
+logic exec_acc_buf_sel;
+logic exec_ub_buf_sel;
 
 always @ (posedge clk or negedge rst_n) begin
     if (!rst_n) begin

@@ -179,7 +179,7 @@ logic        interrupt_en;     // Internal interrupt enable
 logic [7:0]  instr_addr;
 logic [31:0] instr_data;
 
-(* ram_style = "block" *) reg [31:0] instruction_memory [0:31];
+(* ram_style = "block" *) logic [31:0] instruction_memory [0:31];
 
 // Instruction memory write port (from UART DMA)
 always @(posedge clk) begin

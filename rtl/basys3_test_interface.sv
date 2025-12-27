@@ -236,7 +236,7 @@ end
 
 // #region agent log - Monitor UART RX pin directly (HYPOTHESIS A)
 // Register UART RX pin to observe its state
-reg uart_rx_sync;
+logic uart_rx_sync;
 always_ff @(posedge clk) begin
     uart_rx_sync <= uart_rx;
 end

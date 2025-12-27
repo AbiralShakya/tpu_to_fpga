@@ -16,14 +16,14 @@ module uart_loopback_test (
 );
 
     // UART RX signals
-    wire [7:0] rx_data;
-    wire rx_valid;
-    wire rx_ready;
+    logic [7:0] rx_data;
+    logic rx_valid;
+    logic rx_ready;
 
     // UART TX signals
-    reg [7:0] tx_data;
-    reg tx_valid;
-    wire tx_ready;
+    logic [7:0] tx_data;
+    logic tx_valid;
+    logic tx_ready;
 
     // Instantiate UART RX
     uart_rx #(
@@ -68,8 +68,8 @@ module uart_loopback_test (
     end
 
     // LED debug: show last received byte
-    reg [7:0] last_rx;
-    reg [7:0] rx_count;
+    logic [7:0] last_rx;
+    logic [7:0] rx_count;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin

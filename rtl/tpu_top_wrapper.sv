@@ -36,11 +36,11 @@ module tpu_top_wrapper (
     //==========================================================================
     // TPU KEEP SIGNALS - Force TPU to be synthesized by connecting to LEDs
     //==========================================================================
-    // These wires will carry TPU internal status and MUST reach external LEDs
+    // These signals will carry TPU internal status and MUST reach external LEDs
     // to prevent Vivado from optimizing away the entire TPU core
     //==========================================================================
-    wire [15:0] tpu_led_internal;
-    wire [15:0] test_interface_led;
+    logic [15:0] tpu_led_internal;
+    logic [15:0] test_interface_led;
 
     // Local GND signals to prevent global constant routing issues
     // Note: vcc removed - not used anywhere, and causes VCC_WIRE routing errors

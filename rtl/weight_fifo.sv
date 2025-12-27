@@ -60,7 +60,7 @@ logic [ADDR_WIDTH:0]   buf1_rd_count;
 
 // Register buffer selection to prevent mid-operation changes
 // This ensures atomic operations - once an operation starts, it completes on the same buffer
-reg wt_buf_sel_reg;
+logic wt_buf_sel_reg;
 always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         wt_buf_sel_reg <= 1'b0;
