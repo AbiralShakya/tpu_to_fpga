@@ -504,16 +504,20 @@ always @(posedge clk or negedge rst_n) begin
                         addr_lo <= addr_lo + 1;
                         if (addr_lo == 8'hFF) addr_hi <= addr_hi + 1;
                         byte_index <= 5'd0;
-                    end
 
-                    // Check if done
-                    if (byte_count >= length) begin
-                        // If we have partial buffer, write it
-                        if (byte_index != 5'd0) begin
-                            wt_wr_en <= 1'b1;
-                            wt_wr_addr <= {addr_hi[1:0], addr_lo};
-                            wt_wr_data <= {wt_buffer[55:0], rx_data};
+                        // Check if done after 8-byte write
+                        if (byte_count + 1 >= length) begin
+                            if (tx_ready) begin
+                                tx_valid <= 1'b1;
+                                tx_data <= 8'hBB;  // ACK for weight write
+                            end
+                            state <= IDLE;
                         end
+                    end else if (byte_count + 1 >= length) begin
+                        // Partial write (less than 8 bytes total)
+                        wt_wr_en <= 1'b1;
+                        wt_wr_addr <= {addr_hi[1:0], addr_lo};
+                        wt_wr_data <= {wt_buffer[55:0], rx_data};
 
                         // Send ACK
                         if (tx_ready) begin

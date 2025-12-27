@@ -196,7 +196,8 @@ class UARTTransport:
     Handles byte-level protocol with proper synchronization.
     """
 
-    ACK_BYTE = 0xAA
+    ACK_BYTE_UB = 0xAA  # ACK for unified buffer writes
+    ACK_BYTE_WT = 0xBB  # ACK for weight memory writes
     NACK_BYTE = 0xFF
 
     def __init__(self, port: str, baudrate: int = 115200, timeout: float = 2.0):
@@ -218,11 +219,16 @@ class UARTTransport:
         """Send raw data bytes"""
         self.ser.write(data)
 
-    def wait_ack(self, timeout: float = 1.0) -> bool:
+    def wait_ack(self, expected: int = None, timeout: float = 1.0) -> bool:
         """Wait for ACK byte from FPGA"""
         self.ser.timeout = timeout
         ack = self.ser.read(1)
-        return ack == bytes([self.ACK_BYTE])
+        if not ack:
+            return False
+        if expected is not None:
+            return ack[0] == expected
+        # Accept either ACK type
+        return ack[0] in (self.ACK_BYTE_UB, self.ACK_BYTE_WT)
 
     def read_bytes(self, count: int) -> bytes:
         """Read specified number of bytes"""
@@ -295,6 +301,9 @@ class TPUCoprocessor:
             addr: UB address (0-127 per bank)
             data: Data bytes (padded to 32 bytes if needed)
         """
+        # Flush any stale data
+        self.uart.flush()
+
         # Pad to 32 bytes
         if len(data) < self.UB_WORD_SIZE:
             data = data + bytes(self.UB_WORD_SIZE - len(data))
@@ -304,7 +313,7 @@ class TPUCoprocessor:
         self.uart.send_command(UARTCommand.WRITE_UB, 0, addr, 0, len(data))
         self.uart.send_data(data)
         time.sleep(0.05)
-        return self.uart.wait_ack()
+        return self.uart.wait_ack(expected=UARTTransport.ACK_BYTE_UB)
 
     def read_unified_buffer(self, addr: int, length: int = 32) -> bytes:
         """
@@ -326,14 +335,17 @@ class TPUCoprocessor:
             addr: Weight memory address
             data: Weight data (8 bytes for 3x3 array row)
         """
+        # Flush any stale data
+        self.uart.flush()
+
         # Weight memory expects 8 bytes (for 3x3 systolic array)
         if len(data) < 8:
             data = data + bytes(8 - len(data))
 
         self.uart.send_command(UARTCommand.WRITE_WT, 0, addr, 0, len(data))
         self.uart.send_data(data)
-        time.sleep(0.02)
-        return self.uart.wait_ack()
+        time.sleep(0.05)
+        return self.uart.wait_ack(expected=UARTTransport.ACK_BYTE_WT)
 
     # -------------------------------------------------------------------------
     # Instruction Programming
