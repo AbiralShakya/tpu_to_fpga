@@ -92,7 +92,8 @@ module tpu_top_wrapper (
         .hazard_detected(hazard_detected_internal),
         .uart_debug_state(uart_debug_state_internal),
         .uart_debug_cmd(uart_debug_cmd_internal),
-        .uart_debug_byte_count(uart_debug_byte_count_internal)
+        .uart_debug_byte_count(uart_debug_byte_count_internal),
+        .debug_bank_state()  // Bank selection debug (not connected to wrapper outputs)
     );
 
     //==========================================================================

@@ -365,7 +365,10 @@ end
 // HAZARD DETECTION LOGIC
 // =============================================================================
 
-assign hazard_detected = sys_busy | vpu_busy | dma_busy | wt_busy;
+// CRITICAL FIX: Include ub_busy in hazard detection to prevent
+// issuing new UB operations before previous ones complete.
+// Without this, back-to-back LD_UB/ST_UB instructions cause timing races.
+assign hazard_detected = sys_busy | vpu_busy | dma_busy | wt_busy | ub_busy;
 assign sync_hazard = sync_active;
 assign if_id_stall = hazard_detected | sync_hazard;
 assign pipeline_stall = if_id_stall;

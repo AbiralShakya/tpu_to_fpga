@@ -47,7 +47,8 @@ localparam RD_BURST  = 2'b10;
 logic [1:0] rd_state;
 logic [ADDR_WIDTH:0] rd_burst_count;
 logic [ADDR_WIDTH:0] rd_current_addr;
-logic rd_bank_sel;  // Which bank is currently being read
+logic rd_bank_sel;  // Which bank is currently being read (combinatorial)
+logic rd_bank_sel_latched;  // Latched bank selection (captured when ub_rd_en asserted)
 
 // Write state machine (other bank active for writing)
 localparam WR_IDLE   = 2'b00;
@@ -79,6 +80,7 @@ always @(posedge clk) begin
         rd_state <= RD_IDLE;
         rd_burst_count <= {(ADDR_WIDTH+1){1'b0}};
         rd_current_addr <= {(ADDR_WIDTH+1){1'b0}};
+        rd_bank_sel_latched <= 1'b0;
         ub_rd_data <= {DATA_WIDTH{1'b0}};
         ub_rd_valid <= 1'b0;
     end else begin
@@ -89,12 +91,13 @@ always @(posedge clk) begin
                     rd_state <= RD_READ;
                     rd_current_addr <= ub_rd_addr;
                     rd_burst_count <= ub_rd_count;
+                    rd_bank_sel_latched <= rd_bank_sel;  // CRITICAL: Latch bank selection when enable is asserted
                 end
             end
 
             RD_READ: begin
-                // Read from current bank
-                if (rd_bank_sel) begin
+                // Read from LATCHED bank (prevents mid-read bank switching)
+                if (rd_bank_sel_latched) begin
                     ub_rd_data <= memory_bank1[rd_current_addr[ADDR_WIDTH-1:0]];
                 end else begin
                     ub_rd_data <= memory_bank0[rd_current_addr[ADDR_WIDTH-1:0]];
@@ -111,8 +114,8 @@ always @(posedge clk) begin
             end
 
             RD_BURST: begin
-                // Read from current bank
-                if (rd_bank_sel) begin
+                // Read from LATCHED bank (prevents mid-read bank switching)
+                if (rd_bank_sel_latched) begin
                     ub_rd_data <= memory_bank1[rd_current_addr[ADDR_WIDTH-1:0]];
                 end else begin
                     ub_rd_data <= memory_bank0[rd_current_addr[ADDR_WIDTH-1:0]];
@@ -216,15 +219,18 @@ assign ub_done = (rd_state == RD_IDLE) && (wr_state == WR_IDLE) &&
 // =============================================================================
 // SAFETY CHECK: Verify read and write never access same bank simultaneously
 // =============================================================================
-// This is a design-time check - if rd_bank_sel == wr_bank_sel, there's a bug
+// This is a design-time check - if rd_bank_sel_latched == wr_bank_sel_latched, there's a bug
 // In normal operation with proper double buffering:
 //   - rd_bank_sel = ub_buf_sel (active bank for reading)
 //   - wr_bank_sel = ~ub_buf_sel (inactive bank for writing)
-//   - They should NEVER be equal
+//   - Both are LATCHED when enable is asserted to prevent mid-operation bank switching
+//   - This is critical for UART/ISA transitions where ub_buf_sel may change while
+//     an operation is in progress
 // Note: This check is commented out to avoid synthesis issues, but serves as documentation
 // `ifdef SIMULATION
 //     always @(posedge clk) begin
-//         if ((rd_state != RD_IDLE) && (wr_state != WR_IDLE) && (rd_bank_sel == wr_bank_sel)) begin
+//         if ((rd_state != RD_IDLE) && (wr_state != WR_IDLE) &&
+//             (rd_bank_sel_latched == wr_bank_sel_latched)) begin
 //             $error("UNIFIED BUFFER ERROR: Read and write accessing same bank simultaneously!");
 //         end
 //     end

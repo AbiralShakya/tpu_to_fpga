@@ -40,7 +40,10 @@ module tpu_top (
     output logic        hazard_detected,
     output logic [7:0]  uart_debug_state,
     output logic [7:0]  uart_debug_cmd,
-    output logic [15:0] uart_debug_byte_count
+    output logic [15:0] uart_debug_byte_count,
+
+    // Bank selection debug (active during ISA execution)
+    output logic [7:0]  debug_bank_state
 );
 
 // =============================================================================
@@ -464,5 +467,31 @@ assign tpu_done = ~tpu_busy;  // Simplified
 
 assign pipeline_stage = current_stage;
 assign hazard_detected = pipeline_stall;
+
+// Bank selection debug signal:
+// [7]   = use_test_interface (1 = UART controls UB, 0 = controller controls UB)
+// [6]   = ub_buf_sel (actual signal to unified_buffer)
+// [5]   = ctrl_ub_buf_sel (controller's buffer selection)
+// [4]   = ub_busy (unified buffer busy flag)
+// [3]   = ub_rd_en (read enable)
+// [2]   = ub_wr_en (write enable)
+// [1]   = test_ub_rd_en (UART read enable)
+// [0]   = test_ub_wr_en (UART write enable)
+assign debug_bank_state = {
+    use_test_interface,
+    ub_buf_sel,
+    ctrl_ub_buf_sel,
+    ub_busy,
+    ub_rd_en,
+    ub_wr_en,
+    test_ub_rd_en,
+    test_ub_wr_en
+};
+
+// UART debug signals - directly from test interface would require port changes
+// For now, leave unconnected (tied to 0) - basys3_test_interface has them internally
+assign uart_debug_state = 8'h00;
+assign uart_debug_cmd = 8'h00;
+assign uart_debug_byte_count = 16'h0000;
 
 endmodule

@@ -106,7 +106,8 @@ tpu_top dut (
     .hazard_detected (hazard_detected),
     .uart_debug_state (),
     .uart_debug_cmd (),
-    .uart_debug_byte_count ()
+    .uart_debug_byte_count (),
+    .debug_bank_state ()
 );
 
 // =============================================================================
