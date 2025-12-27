@@ -394,8 +394,20 @@ Built following TPU architectural principles and FPGA best practices for high-pe
 ---
 
 **Last Updated**: December 26, 2025  
-**Version**: 1.2 (All interface bugs resolved)  
-**Status**: ✅ **Unified Buffer Read AND Write Fixed** - Ready for Testing
+**Version**: 1.3 (All interface bugs + bank selection resolved)  
+**Status**: ✅ **Unified Buffer Read AND Write Fully Working** - Ready for Testing
+
+### Update Log (v1.3) - CRITICAL BANK SELECTION FIX
+
+**New Critical Fix:**
+- ✅ **Fixed double-buffering bank conflict** - UART writes and reads now access the SAME bank
+- ✅ Dynamic `ub_buf_sel` based on operation type (write vs read)
+- ✅ Reads no longer return all zeros!
+
+**Root Cause**: Unified buffer's double-buffering writes to **opposite bank** from reads:
+- Writes went to bank 1, reads came from bank 0 → **all zeros**
+- Fixed by setting `ub_buf_sel=1` for writes, `ub_buf_sel=0` for reads
+- Now both access bank 0
 
 ### Update Log (v1.2)
 
@@ -405,18 +417,21 @@ Built following TPU architectural principles and FPGA best practices for high-pe
 - ✅ Updated `basys3_test_interface.sv` module interface with correct widths
 - ✅ Added `ub_wr_count` passthrough in `basys3_test_interface.sv`
 - ✅ Fixed all multiplexing logic to properly extend addresses
+- ✅ Fixed signal width mismatches in `tpu_top.sv`
 - ✅ Both read AND write operations now have complete, correct interfaces
 
-**What Was Broken (v1.1):**
+**What Was Broken (v1.1-v1.2):**
 - Read side handshaking was fixed, but writes were still broken
 - Missing `ub_wr_count` caused write state machine to hang
 - 8-bit addresses couldn't access bank 1 (partial sums location)
 - Interface mismatch cascaded through `basys3_test_interface` module
+- **Writes and reads accessed different banks (zeros)**
 
-**What's Fixed Now (v1.2):**
+**What's Fixed Now (v1.3):**
 - ✅ Complete write interface with proper burst count signaling
 - ✅ 9-bit addressing for both read and write (512 locations accessible)
 - ✅ Proper handshaking on both read (`ub_rd_valid`) and write sides
 - ✅ All interface modules updated with correct signal widths
+- ✅ **Both reads and writes access the same bank** - data is actually retrievable!
 - ✅ Partial sum operations should now work correctly
 

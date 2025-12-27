@@ -255,7 +255,54 @@ The partial sum bug should now be resolved. Writes will complete successfully, a
 
 ---
 
-**Status**: ✅ **ALL FIXES APPLIED AND VERIFIED**  
+## CRITICAL UPDATE: Bank Selection Fix (v1.3)
+
+### Issue: Reading All Zeros
+
+After applying the interface fixes, writes appeared to work but **reads returned all zeros**. 
+
+**Root Cause**: The unified buffer uses **double-buffering** to prevent read/write conflicts during TPU execution:
+
+```systemverilog
+// unified_buffer.sv lines 70-73
+rd_bank_sel = ub_buf_sel;      // Read from selected bank
+wr_bank_sel = ~ub_buf_sel;     // Write to OPPOSITE bank!
+```
+
+With `ub_buf_sel = 0` (UART operations):
+- ✅ Reads from `memory_bank0` 
+- ❌ Writes to `memory_bank1` ← **Different bank!**
+
+Result: Writing to bank 1, reading from bank 0 → **all zeros**
+
+### Solution: Dynamic Bank Selection
+
+Modified `tpu_top.sv` line ~431 to dynamically set `ub_buf_sel` based on operation:
+
+**Before:**
+```systemverilog
+assign ub_buf_sel = use_test_interface ? 1'b0 : ctrl_ub_buf_sel;
+```
+
+**After:**
+```systemverilog
+// For UART writes: ub_buf_sel=1 → wr_bank_sel=~1=0 → writes to bank 0
+// For UART reads:  ub_buf_sel=0 → rd_bank_sel=0   → reads from bank 0
+assign ub_buf_sel = use_test_interface ? (test_ub_wr_en ? 1'b1 : 1'b0) : ctrl_ub_buf_sel;
+```
+
+Now both UART reads and writes access **bank 0**, ensuring written data can be read back!
+
+### Additional Fixes in `tpu_top.sv`
+
+1. Extended `test_ub_wr_addr` from 8 to 9 bits (line ~127)
+2. Added `test_ub_wr_count` signal declaration  
+3. Connected `test_ub_wr_count` in basys3_test_interface instantiation
+4. Updated multiplexing to pass through 9-bit addresses directly
+
+---
+
+**Status**: ✅ **ALL FIXES APPLIED AND VERIFIED INCLUDING BANK SELECTION**  
 **Date**: December 26, 2025  
-**Version**: 1.2
+**Version**: 1.3
 

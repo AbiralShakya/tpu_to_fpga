@@ -124,7 +124,8 @@ logic        ub_rd_valid;  // Unified buffer read data valid
 // =============================================================================
 
 logic        test_ub_wr_en;
-logic [7:0]  test_ub_wr_addr;
+logic [8:0]  test_ub_wr_addr;  // 9-bit address: [8]=bank, [7:0]=address
+logic [8:0]  test_ub_wr_count; // 9-bit burst count
 logic [255:0] test_ub_wr_data;
 logic        test_ub_rd_en;
 logic [8:0]  test_ub_rd_addr;  // 9-bit address: [8]=bank, [7:0]=address
@@ -311,6 +312,7 @@ basys3_test_interface test_interface (
     // To Unified Buffer
     .ub_wr_en           (test_ub_wr_en),
     .ub_wr_addr         (test_ub_wr_addr),
+    .ub_wr_count        (test_ub_wr_count),
     .ub_wr_data         (test_ub_wr_data),
     .ub_rd_en           (test_ub_rd_en),
     .ub_rd_addr         (test_ub_rd_addr),
@@ -422,11 +424,13 @@ assign use_test_interface = test_ub_wr_en | test_ub_rd_en | test_wt_wr_en | test
 assign ub_wr_data = use_test_interface ? {test_ub_wr_data[255:0]} : dma_data_in;
 assign ub_wr_en = use_test_interface ? test_ub_wr_en : ctrl_ub_wr_en;
 assign ub_rd_en = use_test_interface ? test_ub_rd_en : ctrl_ub_rd_en;
-assign ub_wr_addr = use_test_interface ? {1'b0, test_ub_wr_addr} : ctrl_ub_wr_addr;
-assign ub_rd_addr = use_test_interface ? test_ub_rd_addr : ctrl_ub_rd_addr;  // test_ub_rd_addr is already 9-bit
-assign ub_wr_count = use_test_interface ? 9'd1 : ctrl_ub_wr_count;
-assign ub_rd_count = use_test_interface ? test_ub_rd_count : ctrl_ub_rd_count;  // Use test_ub_rd_count
-assign ub_buf_sel = use_test_interface ? 1'b0 : ctrl_ub_buf_sel;
+assign ub_wr_addr = use_test_interface ? test_ub_wr_addr : ctrl_ub_wr_addr;  // Already 9-bit
+assign ub_rd_addr = use_test_interface ? test_ub_rd_addr : ctrl_ub_rd_addr;  // Already 9-bit
+assign ub_wr_count = use_test_interface ? test_ub_wr_count : ctrl_ub_wr_count;
+assign ub_rd_count = use_test_interface ? test_ub_rd_count : ctrl_ub_rd_count;
+// For UART: Use ub_buf_sel=1 for writes (so wr_bank_sel=0), ub_buf_sel=0 for reads (so rd_bank_sel=0)
+// This ensures both access bank 0, overcoming the double-buffering design
+assign ub_buf_sel = use_test_interface ? (test_ub_wr_en ? 1'b1 : 1'b0) : ctrl_ub_buf_sel;
 
 // Weight FIFO data (from TEST INTERFACE or legacy DMA)
 assign wt_fifo_data = use_test_interface ? test_wt_wr_data[15:0] : dma_data_in[15:0];
