@@ -366,14 +366,6 @@ always @(posedge clk or negedge rst_n) begin
             // WRITE_UB: Write data to Unified Buffer (32 bytes at a time)
             // ================================================================
             WRITE_UB: begin
-                if (rx_valid && !rx_framing_error) begin
-                    // Accumulate bytes into buffer (newest byte goes to LSB)
-                    // ub_buffer[7:0] = newest byte, ub_buffer[15:8] = previous, etc.
-                    ub_buffer <= {rx_data, ub_buffer[255:8]};
-                    byte_index <= byte_index + 1;
-                    byte_count <= byte_count + 1;
-                end
-
                 // Update WRITE_UB debug signals
                 debug_write_ub_rx_valid <= rx_valid;
                 debug_write_ub_rx_data <= rx_data;
@@ -381,10 +373,18 @@ always @(posedge clk or negedge rst_n) begin
                 debug_ub_buffer_lsb <= ub_buffer[7:0];
                 debug_ub_buffer_msb <= ub_buffer[255:248];
 
+                if (rx_valid && !rx_framing_error) begin
+                    // Accumulate bytes into buffer (newest byte goes to MSB position)
+                    // After shift: [255:248] = newest byte, [247:240] = previous, etc.
+                    ub_buffer <= {rx_data, ub_buffer[255:8]};
+                    byte_index <= byte_index + 1;
+                    byte_count <= byte_count + 1;
+
                     // When we have 32 bytes, write to UB
-                // Check BEFORE increment: when byte_index is 31, we've received 32 bytes (0-31)
-                // At this point: ub_buffer has bytes 0-30, rx_data = byte31
-                if (byte_index == 5'd31) begin
+                    // Check BEFORE increment: when byte_index is 31, we're receiving byte31 (the 32nd byte)
+                    // At this point: ub_buffer has bytes 0-30, rx_data = byte31
+                    // CRITICAL: This check MUST be inside rx_valid block to ensure rx_data is valid!
+                    if (byte_index == 5'd31) begin
                         ub_wr_en <= 1'b1;
                         ub_wr_addr <= {1'b0, addr_lo};  // Extend to 9 bits
                         ub_wr_count <= 9'd1;  // Write 1 word (256 bits = 32 bytes)
@@ -428,56 +428,60 @@ always @(posedge clk or negedge rst_n) begin
                             ub_buffer[31:24], ub_buffer[23:16], ub_buffer[15:8], rx_data  // bytes 29-32: byte29, byte30, byte31, byte32
                         };
 
-                        addr_lo <= addr_lo + 1;  // Increment address
+                        addr_lo <= addr_lo + 1;  // Increment address for multi-word writes
                         byte_index <= 5'd0;
+
+                        // Check if we're done (use byte_count + 1 since increment is non-blocking)
+                        if (byte_count + 1 >= length) begin
+                            // Send ACK byte to confirm write completed
+                            if (tx_ready) begin
+                                tx_valid <= 1'b1;
+                                tx_data <= 8'hAA;  // ACK byte
+                            end
+                            state <= IDLE;
+                        end
+                    end else if (byte_count + 1 >= length) begin
+                        // Partial write path: less than 32 bytes total
+                        // CRITICAL: This is inside rx_valid block - ub_buffer hasn't been updated yet!
+                        // We must account for rx_data being the CURRENT byte, not yet shifted in.
+                        // The NEW buffer would be {rx_data, ub_buffer[255:8]}, so we shift indices by 8.
+                        ub_wr_en <= 1'b1;
+                        ub_wr_addr <= {1'b0, addr_lo};  // Extend to 9 bits
+                        ub_wr_count <= 9'd1;  // Write 1 word (256 bits = 32 bytes)
+                        // Construct ub_wr_data as if ub_buffer already had rx_data shifted in:
+                        // - OLD [X:Y] maps to NEW [X-8:Y-8]
+                        // - OLD [255:248] (MSB) maps to NEW rx_data
+                        ub_wr_data <= {
+                            ub_buffer[39:32],   ub_buffer[31:24],   ub_buffer[23:16],   ub_buffer[15:8],
+                            ub_buffer[71:64],   ub_buffer[63:56],   ub_buffer[55:48],   ub_buffer[47:40],
+                            ub_buffer[103:96],  ub_buffer[95:88],   ub_buffer[87:80],   ub_buffer[79:72],
+                            ub_buffer[135:128], ub_buffer[127:120], ub_buffer[119:112], ub_buffer[111:104],
+                            ub_buffer[167:160], ub_buffer[159:152], ub_buffer[151:144], ub_buffer[143:136],
+                            ub_buffer[199:192], ub_buffer[191:184], ub_buffer[183:176], ub_buffer[175:168],
+                            ub_buffer[231:224], ub_buffer[223:216], ub_buffer[215:208], ub_buffer[207:200],
+                            rx_data,            ub_buffer[255:248], ub_buffer[247:240], ub_buffer[239:232]
+                        };
+                        // Same for last_ub_write_data
+                        last_ub_write_data <= {
+                            ub_buffer[39:32],   ub_buffer[31:24],   ub_buffer[23:16],   ub_buffer[15:8],
+                            ub_buffer[71:64],   ub_buffer[63:56],   ub_buffer[55:48],   ub_buffer[47:40],
+                            ub_buffer[103:96],  ub_buffer[95:88],   ub_buffer[87:80],   ub_buffer[79:72],
+                            ub_buffer[135:128], ub_buffer[127:120], ub_buffer[119:112], ub_buffer[111:104],
+                            ub_buffer[167:160], ub_buffer[159:152], ub_buffer[151:144], ub_buffer[143:136],
+                            ub_buffer[199:192], ub_buffer[191:184], ub_buffer[183:176], ub_buffer[175:168],
+                            ub_buffer[231:224], ub_buffer[223:216], ub_buffer[215:208], ub_buffer[207:200],
+                            rx_data,            ub_buffer[255:248], ub_buffer[247:240], ub_buffer[239:232]
+                        };
+                        last_ub_write_addr <= addr_lo;
+
+                        // Send ACK byte to confirm write completed
+                        if (tx_ready) begin
+                            tx_valid <= 1'b1;
+                            tx_data <= 8'hAA;  // ACK byte
+                        end
+
+                        state <= IDLE;
                     end
-
-                // Check if we've received all expected bytes (partial write path)
-                // Note: byte_count and byte_index are incremented BEFORE this check
-                // So when byte_count == length, byte_index is the count of bytes received (0-indexed)
-                // ub_buffer already contains the current rx_data in [7:0]
-                // Only execute if we haven't already written 32 bytes (byte_index != 31 means we have < 32 bytes)
-                if (byte_count >= length && byte_index != 5'd31) begin
-                    // Always write the accumulated data
-                            ub_wr_en <= 1'b1;
-                            ub_wr_addr <= {1'b0, addr_lo};  // Extend to 9 bits
-                            ub_wr_count <= 9'd1;  // Write 1 word (256 bits = 32 bytes)
-                    // ub_buffer is built as {newest, ..., oldest}
-                    // So ub_buffer[7:0] = last byte, ub_buffer[15:8] = second-to-last, etc.
-                    // For READ_UB, we want to send in the order received (oldest first)
-                    // Reverse: ub_buffer[31:24] (oldest) -> output[7:0] (first byte)
-                    ub_wr_data <= {
-                            ub_buffer[31:24],  ub_buffer[23:16],   ub_buffer[15:8],    ub_buffer[7:0],
-                            ub_buffer[63:56],  ub_buffer[55:48],   ub_buffer[47:40],   ub_buffer[39:32],
-                            ub_buffer[95:88],  ub_buffer[87:80],   ub_buffer[79:72],   ub_buffer[71:64],
-                            ub_buffer[127:120], ub_buffer[119:112], ub_buffer[111:104], ub_buffer[103:96],
-                            ub_buffer[159:152], ub_buffer[151:144], ub_buffer[143:136], ub_buffer[135:128],
-                            ub_buffer[191:184], ub_buffer[183:176], ub_buffer[175:168], ub_buffer[167:160],
-                            ub_buffer[223:216], ub_buffer[215:208], ub_buffer[207:200], ub_buffer[199:192],
-                            ub_buffer[255:248], ub_buffer[247:240], ub_buffer[239:232], ub_buffer[231:224]
-                    };
-                    // CRITICAL FIX: Use the NEW buffer value {rx_data, ub_buffer[255:8]} since ub_buffer update happens at end of cycle
-                    // For 4-byte write: NEW buffer = {dd, cc, bb, aa}, we want {aa, bb, cc, dd}
-                    // So: [7:0] = aa = ub_buffer[31:24], [15:8] = bb = ub_buffer[23:16], [23:16] = cc = ub_buffer[15:8], [31:24] = dd = rx_data
-                    last_ub_write_data <= {
-                            ub_buffer[31:24],  ub_buffer[23:16],   ub_buffer[15:8],    rx_data,        // bytes 1-4: ub_buffer[31:24] is byte1, rx_data is byte4
-                            ub_buffer[63:56],  ub_buffer[55:48],   ub_buffer[47:40],   ub_buffer[39:32], // bytes 5-8
-                            ub_buffer[95:88],  ub_buffer[87:80],   ub_buffer[79:72],   ub_buffer[71:64], // bytes 9-12
-                            ub_buffer[127:120], ub_buffer[119:112], ub_buffer[111:104], ub_buffer[103:96], // bytes 13-16
-                            ub_buffer[159:152], ub_buffer[151:144], ub_buffer[143:136], ub_buffer[135:128], // bytes 17-20
-                            ub_buffer[191:184], ub_buffer[183:176], ub_buffer[175:168], ub_buffer[167:160], // bytes 21-24
-                            ub_buffer[223:216], ub_buffer[215:208], ub_buffer[207:200], ub_buffer[199:192], // bytes 25-28
-                            ub_buffer[255:248], ub_buffer[247:240], ub_buffer[239:232], ub_buffer[231:224]  // bytes 29-32
-                    };  // Store for READ_UB (correct order: oldest first)
-                    last_ub_write_addr <= addr_lo;
-
-                    // Send ACK byte to confirm write completed
-                    if (tx_ready) begin
-                        tx_valid <= 1'b1;
-                        tx_data <= 8'hAA;  // ACK byte
-                    end
-
-                    state <= IDLE;
                 end
             end
 
