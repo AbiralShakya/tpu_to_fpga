@@ -382,9 +382,9 @@ always @(posedge clk or negedge rst_n) begin
                 debug_ub_buffer_msb <= ub_buffer[255:248];
 
                     // When we have 32 bytes, write to UB
-                // Check BEFORE increment: when byte_index is 30, we've received 31 bytes, next is 32nd
-                // At this point: ub_buffer has bytes 1-31, rx_data will be byte 32
-                if (byte_index == 5'd30) begin
+                // Check BEFORE increment: when byte_index is 31, we've received 32 bytes (0-31)
+                // At this point: ub_buffer has bytes 0-30, rx_data = byte31
+                if (byte_index == 5'd31) begin
                         ub_wr_en <= 1'b1;
                         ub_wr_addr <= {1'b0, addr_lo};  // Extend to 9 bits
                         ub_wr_count <= 9'd1;  // Write 1 word (256 bits = 32 bytes)
@@ -436,8 +436,8 @@ always @(posedge clk or negedge rst_n) begin
                 // Note: byte_count and byte_index are incremented BEFORE this check
                 // So when byte_count == length, byte_index is the count of bytes received (0-indexed)
                 // ub_buffer already contains the current rx_data in [7:0]
-                // Only execute if we haven't already written 32 bytes (byte_index != 30 means we have < 32 bytes)
-                if (byte_count >= length && byte_index != 5'd30) begin
+                // Only execute if we haven't already written 32 bytes (byte_index != 31 means we have < 32 bytes)
+                if (byte_count >= length && byte_index != 5'd31) begin
                     // Always write the accumulated data
                             ub_wr_en <= 1'b1;
                             ub_wr_addr <= {1'b0, addr_lo};  // Extend to 9 bits
