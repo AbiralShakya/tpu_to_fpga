@@ -67,12 +67,12 @@ logic [DATA_WIDTH-1:0] wr_data_latched;  // Latched write data (captured when ub
 // =============================================================================
 
 // Bank selection for true double buffering:
-// - Read from bank selected by ub_buf_sel (active bank)
-// - Write to opposite bank (~ub_buf_sel) to prevent conflicts
-// This ensures read and write never access the same bank simultaneously
+// Bank selection: Use address bit 8 directly
+// This allows controller/UART to explicitly select the bank via address encoding
+// For UART operations and ISA execution, both should access bank 0 for consistency
 always @* begin
-    rd_bank_sel = ub_buf_sel;   // Current read bank (active bank)
-    wr_bank_sel = ~ub_buf_sel;  // Write to opposite bank (inactive bank)
+    rd_bank_sel = ub_rd_addr[8];  // Bank from address bit 8
+    wr_bank_sel = ub_wr_addr[8];  // Bank from address bit 8
 end
 
 always @(posedge clk) begin

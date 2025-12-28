@@ -553,9 +553,11 @@ always @* begin
             // ================================================================
             // 0x05: ST_UB - Store to Unified Buffer
             // ================================================================
+            // Write to same bank as LD_UB reads from (bank 0 when exec_ub_buf_sel=0)
+            // This ensures UART can read the results after ISA execution
             ST_UB_OP: begin
                 ub_wr_en        = 1'b1;
-                ub_wr_addr      = {~exec_ub_buf_sel, exec_arg1};
+                ub_wr_addr      = {exec_ub_buf_sel, exec_arg1};  // Same bank as LD_UB
                 ub_wr_count     = {1'b0, exec_arg2};
                 pc_cnt_internal = 1'b1;
                 ir_ld_internal  = 1'b1;
