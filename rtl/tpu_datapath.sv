@@ -362,7 +362,9 @@ assign row2_act = ub_rd_data[23:16];  // Row 2 activation
 // =============================================================================
 
 // Weight FIFO read control (from systolic array)
-assign wt_rd_en = systolic_active && !wt_rd_empty;
+// CRITICAL: Pop weights during en_weight_pass (SYS_LOAD_WEIGHTS), not during systolic_active (SYS_COMPUTE)
+// Note: wt_rd_empty is unused (FIFO has no empty flag), so we just use en_weight_pass
+assign wt_rd_en = en_weight_pass;
 
 // DMA status simulation (in real implementation, this would connect to DMA controller)
 // For now, DMA operations complete immediately
