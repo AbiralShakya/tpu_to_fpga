@@ -561,13 +561,14 @@ def demo_simple_inference(tpu: TPUCoprocessor):
     # Execute
     print("\n  Executing inference on FPGA...")
     start_time = time.time()
-    success = tpu.execute()
+    exec_success = tpu.execute()
     elapsed = (time.time() - start_time) * 1000
 
-    if success:
+    if exec_success:
         print(f"  Execution completed in {elapsed:.2f} ms")
     else:
         print(f"  Execution timeout after {elapsed:.2f} ms")
+        return False
 
     # Read results
     result_bytes = tpu.read_unified_buffer(1, 32)
@@ -577,7 +578,13 @@ def demo_simple_inference(tpu: TPUCoprocessor):
     result = np.frombuffer(result_bytes[:3], dtype=np.int8)
     print(f"  Interpreted result: {result}")
 
-    return success
+    # Validate result against expected
+    if np.array_equal(result, expected.flatten()):
+        print("  PASS: Result matches expected!")
+        return True
+    else:
+        print(f"  FAIL: Result mismatch! Expected {expected.flatten()}, got {result}")
+        return False
 
 
 def demo_streaming_inference(tpu: TPUCoprocessor):
@@ -624,7 +631,9 @@ def demo_streaming_inference(tpu: TPUCoprocessor):
 
     # Stream batches
     results = []
+    expected_results = []
     total_time = 0
+    all_correct = True
 
     for i, batch in enumerate(batches):
         # Load input
@@ -644,14 +653,27 @@ def demo_streaming_inference(tpu: TPUCoprocessor):
 
         # CPU reference
         expected = weights @ batch.reshape(3, 1)
+        expected_results.append(expected.flatten())
 
-        print(f"\n  Batch {i+1}: Input={batch} -> FPGA={result} (Expected={expected.flatten()})")
+        # Check correctness
+        match = np.array_equal(result, expected.flatten())
+        status = "OK" if match else "MISMATCH"
+        if not match:
+            all_correct = False
+
+        print(f"\n  Batch {i+1}: Input={batch} -> FPGA={result} (Expected={expected.flatten()}) [{status}]")
 
     avg_latency = (total_time / len(batches)) * 1000
     print(f"\n  Average inference latency: {avg_latency:.2f} ms")
     print(f"  Throughput: {len(batches)/total_time:.1f} batches/sec")
 
-    return True
+    if all_correct:
+        print("  PASS: All batches computed correctly!")
+    else:
+        correct_count = sum(1 for r, e in zip(results, expected_results) if np.array_equal(r, e))
+        print(f"  FAIL: Only {correct_count}/{len(batches)} batches correct")
+
+    return all_correct
 
 
 # =============================================================================
