@@ -200,6 +200,10 @@ logic sync_hazard;
 always @ (posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         pc_reg <= 8'h00;
+    end else if (start_execution) begin
+        // CRITICAL: Reset PC to 0 when start_execution is asserted
+        // This allows UART to program instructions, then trigger execution
+        pc_reg <= 8'h00;
     end else if (pc_ld) begin
         pc_reg <= instr_data[7:0];  // Load from instruction data (for jumps)
     end else if (pc_cnt_internal && !if_id_stall && !sync_hazard) begin
@@ -251,8 +255,9 @@ always @ (posedge clk or negedge rst_n) begin
         if_id_wt_buf_sel  <= 1'b0;
         if_id_acc_buf_sel <= 1'b0;
         if_id_ub_buf_sel  <= 1'b0;
-    end else if (if_id_flush) begin
-        // Flush pipeline on exceptions/jumps
+    end else if (if_id_flush || start_execution) begin
+        // Flush pipeline on exceptions/jumps OR when restarting execution
+        // CRITICAL: Clear pipeline when start_execution to avoid executing stale instructions
         if_id_valid    <= 1'b0;
         if_id_pc       <= 8'h00;
         if_id_opcode   <= {OPCODE_WIDTH{1'b0}};
@@ -291,6 +296,12 @@ assign buffers_idle = !ub_busy && !wt_busy;  // Both unified buffer and weight F
 
 always @ (posedge clk or negedge rst_n) begin
     if (!rst_n) begin
+        wt_buf_sel_reg  <= 1'b0;
+        acc_buf_sel_reg <= 1'b0;
+        ub_buf_sel_reg  <= 1'b0;
+    end else if (start_execution) begin
+        // Reset buffer selection to 0 when starting execution
+        // This ensures a clean state for the new program
         wt_buf_sel_reg  <= 1'b0;
         acc_buf_sel_reg <= 1'b0;
         ub_buf_sel_reg  <= 1'b0;
@@ -383,6 +394,17 @@ logic exec_ub_buf_sel;
 
 always @ (posedge clk or negedge rst_n) begin
     if (!rst_n) begin
+        exec_valid  <= 1'b0;
+        exec_opcode <= {OPCODE_WIDTH{1'b0}};
+        exec_arg1   <= 8'h00;
+        exec_arg2   <= 8'h00;
+        exec_arg3   <= 8'h00;
+        exec_flags  <= 2'b00;
+        exec_wt_buf_sel  <= 1'b0;
+        exec_acc_buf_sel <= 1'b0;
+        exec_ub_buf_sel  <= 1'b0;
+    end else if (start_execution) begin
+        // CRITICAL: Flush execute stage when restarting execution
         exec_valid  <= 1'b0;
         exec_opcode <= {OPCODE_WIDTH{1'b0}};
         exec_arg1   <= 8'h00;

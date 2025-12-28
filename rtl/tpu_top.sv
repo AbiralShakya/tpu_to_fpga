@@ -224,6 +224,7 @@ assign wt_mem_rd_data = weight_memory[wt_mem_addr[7:0]];
 tpu_controller controller (
     .clk            (clk),
     .rst_n          (rst_n),
+    .start_execution(test_start_execution),  // CRITICAL: Connect start signal from UART/buttons
 
     // Instruction interface
     .instr_addr     (instr_addr),

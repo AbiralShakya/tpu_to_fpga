@@ -8,8 +8,6 @@ module systolic_controller (
     input  logic        sys_start,
     input  logic [1:0]  sys_mode,        // Operation mode (00=MatMul, 01=Conv2D, 10=Accumulate)
     input  logic [7:0]  sys_rows,         // Number of rows to process
-    input  logic        sys_signed,      // Signed/unsigned arithmetic
-    input  logic        sys_transpose,    // Transpose input matrix
     input  logic [7:0]  sys_acc_addr,    // Accumulator write address
     input  logic        sys_acc_clear,   // Clear accumulator before write
 
