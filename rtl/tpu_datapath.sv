@@ -81,6 +81,10 @@ logic        en_capture_col1;
 logic        en_capture_col2;
 logic        systolic_active;
 
+// Systolic controller accumulator outputs (separate from input ports to avoid multi-driver)
+logic        sc_acc_wr_en;    // Accumulator write enable from systolic controller
+logic [7:0]  sc_acc_wr_addr;  // Accumulator write address from systolic controller
+
 // Accumulator connections
 logic [63:0] acc_wr_data;
 logic [63:0] acc_rd_data;
@@ -90,7 +94,7 @@ logic [255:0] vpu_out_data;
 logic         vpu_out_valid;
 
 // Unified buffer connections (double-buffered)
-logic         ub_rd_valid;
+// NOTE: ub_rd_valid is declared as OUTPUT PORT above - do NOT redeclare here!
 logic         ub_wr_ready;
 // ub_busy and ub_done are declared as output ports above, no need to redeclare
 
@@ -119,8 +123,8 @@ systolic_controller systolic_ctrl (
     .en_capture_col1 (en_capture_col1),
     .en_capture_col2 (en_capture_col2),
     .systolic_active (systolic_active),
-    .acc_wr_en       (acc_wr_en),
-    .acc_wr_addr     (acc_addr),
+    .acc_wr_en       (sc_acc_wr_en),    // Use internal signal, not input port
+    .acc_wr_addr     (sc_acc_wr_addr),  // Use internal signal, not input port
     .acc_clear       ()  // Not used - handled by sys_acc_clear
 );
 
@@ -187,12 +191,17 @@ mmu systolic_array (
 // ACCUMULATORS (DOUBLE-BUFFERED)
 // =============================================================================
 
+// Accumulator write control: OR systolic controller output with direct controller input
+// This allows both MATMUL (via systolic_ctrl) and direct writes to work
+logic acc_wr_en_combined;
+assign acc_wr_en_combined = sc_acc_wr_en | acc_wr_en;
+
 accumulator accumulators (
     .clk         (clk),
     .rst_n       (rst_n),
     .acc_buf_sel (acc_buf_sel),
-    .wr_en       (acc_wr_en),
-    .wr_addr     (acc_addr),
+    .wr_en       (acc_wr_en_combined),  // Combined write enable
+    .wr_addr     (acc_addr),             // Address from controller (same as sc_acc_wr_addr)
     .wr_data     (acc_wr_data),
     .rd_en       (acc_rd_en),
     .rd_addr     (acc_addr),

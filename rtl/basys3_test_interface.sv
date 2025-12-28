@@ -341,18 +341,11 @@ end
 // ============================================================================
 // EXECUTION CONTROL
 // ============================================================================
-
-always_ff @(posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-        start_execution <= 1'b0;
-    end else begin
-        start_execution <= 1'b0;
-
-        if (current_mode == MODE_EXECUTE && btn_press[0]) begin  // BTNC - start execution
-            start_execution <= 1'b1;
-        end
-    end
-end
+// NOTE: start_execution is now handled by the output mux on line 503:
+//   assign start_execution = uart_active ? uart_start_execution : phys_start_execution;
+// phys_start_execution is defined on line 484:
+//   assign phys_start_execution = (current_mode == MODE_EXECUTE && btn_press[0]);
+// The old always_ff block was DEAD CODE causing a multi-driver conflict!
 
 // ============================================================================
 // RESULTS VIEWING
@@ -407,7 +400,7 @@ logic [31:0] uart_debug_rx_count;
 logic [31:0] uart_debug_tx_count;
 logic [7:0] uart_debug_last_rx_byte;
 logic [31:0] uart_debug_framing_error_count;
-logic [7:0] uart_debug_cmd;
+// NOTE: uart_debug_cmd already declared on line 404 - removed duplicate
 
 // Instantiate standard UART DMA module (complete implementation)
 uart_dma_basys3 uart_dma (

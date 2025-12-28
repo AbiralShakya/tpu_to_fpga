@@ -51,7 +51,7 @@ module tpu_top (
 // =============================================================================
 
 // =============================================================================
-// CONTROLLER TO DATAPATH CONTROL SIGNALS (23 signals)
+// CONTROLLER TO DATAPATH CONTROL SIGNALS (24 signals)
 // =============================================================================
 
 // Systolic Array Control (6 signals)
@@ -62,7 +62,7 @@ logic        sys_signed;
 logic [7:0]  sys_acc_addr;
 logic        sys_acc_clear;
 
-// Unified Buffer Control (6 signals)
+// Unified Buffer Control (7 signals)
 // Controller outputs
 logic        ctrl_ub_rd_en;
 logic        ctrl_ub_wr_en;
@@ -70,6 +70,7 @@ logic [8:0]  ctrl_ub_rd_addr;
 logic [8:0]  ctrl_ub_wr_addr;
 logic [8:0]  ctrl_ub_rd_count;
 logic [8:0]  ctrl_ub_wr_count;
+logic        ctrl_ub_buf_sel;
 
 // Multiplexed signals to datapath
 logic        ub_rd_en;
@@ -249,6 +250,7 @@ tpu_controller controller (
     .ub_wr_addr    (ctrl_ub_wr_addr),
     .ub_rd_count   (ctrl_ub_rd_count),
     .ub_wr_count   (ctrl_ub_wr_count),
+    .ub_buf_sel    (ctrl_ub_buf_sel),
 
     // Weight FIFO Control
     .wt_mem_rd_en  (wt_mem_rd_en),
@@ -433,23 +435,21 @@ assign use_test_interface = test_ub_wr_en | test_ub_rd_en | test_wt_wr_en | test
 assign ub_wr_data = use_test_interface ? test_ub_wr_data : acc_data_out;
 assign ub_wr_en = use_test_interface ? test_ub_wr_en : ctrl_ub_wr_en;
 assign ub_rd_en = use_test_interface ? test_ub_rd_en : ctrl_ub_rd_en;
-assign ub_wr_addr = use_test_interface ? test_ub_wr_addr : ctrl_ub_wr_addr;  // Already 9-bit
-assign ub_rd_addr = use_test_interface ? test_ub_rd_addr : ctrl_ub_rd_addr;  // Already 9-bit
+assign ub_wr_addr = use_test_interface ? {1'b0, test_ub_wr_addr[7:0]} : ctrl_ub_wr_addr;  // UART always uses bank 0
+assign ub_rd_addr = use_test_interface ? {1'b0, test_ub_rd_addr[7:0]} : ctrl_ub_rd_addr;  // UART always uses bank 0
 assign ub_wr_count = use_test_interface ? test_ub_wr_count : ctrl_ub_wr_count;
 assign ub_rd_count = use_test_interface ? test_ub_rd_count : ctrl_ub_rd_count;
-// Bank selection is now handled via address bit 8 (ub_rd_addr[8] and ub_wr_addr[8])
 
 // Weight FIFO data (from TEST INTERFACE or legacy DMA)
 // Weight data comes from weight memory during RD_WEIGHT execution
 // wt_mem_rd_data contains the full 64-bit row read from weight memory
 assign wt_fifo_data = wt_mem_rd_data;
 
-// Legacy DMA control signals
-assign dma_start = dma_start_in;
-assign dma_dir = dma_dir_in;
-assign dma_ub_addr = dma_ub_addr_in;
-assign dma_length = dma_length_in;
-assign dma_elem_sz = dma_elem_sz_in;
+// Legacy DMA control signals - REMOVED: These were causing multi-driver conflict!
+// The controller outputs (dma_start, dma_dir, etc.) are the sole drivers.
+// Legacy DMA input ports (dma_start_in, etc.) are NOT connected - they exist
+// only for interface compatibility. Use UART/controller for DMA commands.
+// If legacy DMA is needed, a mux should be added to select between sources.
 
 // DMA outputs (TEST INTERFACE overrides legacy)
 assign dma_data_out = ub_rd_data;  // Always output from UB
@@ -483,6 +483,7 @@ assign hazard_detected = pipeline_stall;
 // [2]   = ub_wr_en (write enable)
 // [1]   = test_ub_rd_en (UART read enable)
 // [0]   = test_ub_wr_en (UART write enable)
+// Note: UART always uses bank 0, controller uses ctrl_ub_buf_sel in address bit 8
 assign debug_bank_state = {
     use_test_interface,
     ub_rd_addr[8],

@@ -34,13 +34,14 @@ module tpu_controller (
     output logic [7:0] sys_acc_addr,    // Accumulator write address
     output logic       sys_acc_clear,   // Clear accumulator before write
 
-    // Unified Buffer Control (6 signals)
+    // Unified Buffer Control (7 signals)
     output logic       ub_rd_en,        // UB read enable
     output logic       ub_wr_en,        // UB write enable
     output logic [8:0] ub_rd_addr,      // Read address + bank select
     output logic [8:0] ub_wr_addr,      // Write address + bank select
     output logic [8:0] ub_rd_count,     // Read burst count
     output logic [8:0] ub_wr_count,     // Write burst count
+    output logic       ub_buf_sel,      // Bank selection toggle
 
     // Weight FIFO Control (4 signals)
     output logic       wt_mem_rd_en,    // Read from weight DRAM
@@ -453,6 +454,7 @@ always @* begin
     ub_wr_addr      = 9'h000;
     ub_rd_count     = 9'h000;
     ub_wr_count     = 9'h000;
+    ub_buf_sel      = exec_ub_buf_sel;  // Use pipelined buffer state
 
     // Weight FIFO Control
     wt_mem_rd_en    = 1'b0;
@@ -775,9 +777,10 @@ always @* begin
                 sync_wait       = 1'b1;
                 sync_mask       = exec_arg1[3:0];
                 sync_timeout    = {exec_arg2, exec_arg3};
-                // Toggle all buffer selectors
-                // The actual toggle happens in buffer state register update logic
+                // Toggle buffer selectors that have output ports
+                // NOTE: wt_buf_sel removed - weight FIFO uses push/pop, not buffer selection
                 acc_buf_sel     = ~exec_acc_buf_sel;
+                ub_buf_sel      = ~exec_ub_buf_sel;
                 pc_cnt_internal = 1'b0;  // Stall PC!
                 ir_ld_internal  = 1'b1;  // Continue loading but don't execute
             end
