@@ -17,7 +17,7 @@ module tpu_controller (
     input  logic       ub_busy,        // Unified buffer busy (for buffer toggle safety)
 
     // =============================================================================
-    // CONTROL OUTPUTS TO DATAPATH (46 signals total)
+    // CONTROL OUTPUTS TO DATAPATH (40 signals total)
     // =============================================================================
 
     // Pipeline/Program Control (4 signals)
@@ -26,30 +26,27 @@ module tpu_controller (
     output logic       ir_ld,          // Instruction register load
     output logic       if_id_flush,    // Pipeline flush
 
-    // Systolic Array Control (7 signals)
+    // Systolic Array Control (6 signals)
     output logic       sys_start,       // Start systolic operation
     output logic [1:0] sys_mode,        // Operation mode (00=MatMul, 01=Conv2D, 10=Accumulate)
     output logic [7:0] sys_rows,        // Number of rows to process
     output logic       sys_signed,      // Signed/unsigned arithmetic
-    output logic       sys_transpose,   // Transpose input matrix
     output logic [7:0] sys_acc_addr,    // Accumulator write address
     output logic       sys_acc_clear,   // Clear accumulator before write
 
-    // Unified Buffer Control (7 signals)
+    // Unified Buffer Control (6 signals)
     output logic       ub_rd_en,        // UB read enable
     output logic       ub_wr_en,        // UB write enable
     output logic [8:0] ub_rd_addr,      // Read address + bank select
     output logic [8:0] ub_wr_addr,      // Write address + bank select
     output logic [8:0] ub_rd_count,     // Read burst count
     output logic [8:0] ub_wr_count,     // Write burst count
-    output logic       ub_buf_sel,      // Bank selection toggle
 
-    // Weight FIFO Control (5 signals)
+    // Weight FIFO Control (4 signals)
     output logic       wt_mem_rd_en,    // Read from weight DRAM
-    output logic [23:0] wt_mem_addr,    // DRAM address
+    output logic [23:0] wt_mem_addr,    // DRAM address (used by tpu_top for weight_memory indexing)
     output logic       wt_fifo_wr,      // Weight FIFO write enable
     output logic [7:0] wt_num_tiles,    // Number of tiles to load
-    output logic       wt_buf_sel,      // Weight buffer selection
 
     // Accumulator Control (4 signals)
     output logic       acc_wr_en,       // Accumulator write enable
@@ -57,12 +54,9 @@ module tpu_controller (
     output logic [7:0] acc_addr,        // Accumulator address
     output logic       acc_buf_sel,     // Accumulator buffer selection
 
-    // VPU Control (6 signals)
+    // VPU Control (3 signals)
     output logic       vpu_start,       // Start VPU operation
     output logic [3:0] vpu_mode,        // VPU function selection
-    output logic [7:0] vpu_in_addr,     // VPU input address
-    output logic [7:0] vpu_out_addr,    // VPU output address
-    output logic [7:0] vpu_length,      // Number of elements
     output logic [15:0] vpu_param,      // VPU operation parameter
 
     // DMA Control (5 signals)
@@ -449,7 +443,6 @@ always @* begin
     sys_mode        = 2'b00;
     sys_rows        = 8'h00;
     sys_signed      = 1'b0;
-    sys_transpose   = 1'b0;
     sys_acc_addr    = 8'h00;
     sys_acc_clear   = 1'b0;
 
@@ -460,14 +453,12 @@ always @* begin
     ub_wr_addr      = 9'h000;
     ub_rd_count     = 9'h000;
     ub_wr_count     = 9'h000;
-    ub_buf_sel      = exec_ub_buf_sel;  // Use pipelined buffer state
 
     // Weight FIFO Control
     wt_mem_rd_en    = 1'b0;
     wt_mem_addr     = 24'h000000;
     wt_fifo_wr      = 1'b0;
     wt_num_tiles    = 8'h00;
-    wt_buf_sel      = exec_wt_buf_sel;  // Use pipelined buffer state
 
     // Accumulator Control
     acc_wr_en       = 1'b0;
@@ -478,9 +469,6 @@ always @* begin
     // VPU Control
     vpu_start       = 1'b0;
     vpu_mode        = 4'h0;
-    vpu_in_addr     = 8'h00;
-    vpu_out_addr    = 8'h00;
-    vpu_length      = 8'h00;
     vpu_param       = 16'h0000;
 
     // DMA Control
@@ -556,7 +544,6 @@ always @* begin
                 wt_mem_addr     = {16'b0, exec_arg1};  // Direct row addressing
                 wt_fifo_wr      = 1'b1;
                 wt_num_tiles    = exec_arg2;
-                wt_buf_sel      = exec_flags[0];
                 pc_cnt_internal = 1'b1;
                 ir_ld_internal  = 1'b1;
             end
@@ -593,7 +580,6 @@ always @* begin
                 sys_mode        = 2'b00;  // Matrix multiply mode
                 sys_rows        = exec_arg3;
                 sys_signed      = exec_flags[1];
-                sys_transpose   = exec_flags[0];
                 sys_acc_addr    = exec_arg2;
                 sys_acc_clear   = 1'b1;
                 ub_rd_en        = 1'b1;
@@ -614,7 +600,6 @@ always @* begin
                 sys_mode        = 2'b01;  // Convolution mode
                 sys_rows        = exec_arg3;  // Derived from kernel/stride
                 sys_signed      = exec_flags[1];
-                sys_transpose   = exec_flags[0];
                 sys_acc_addr    = exec_arg2;
                 sys_acc_clear   = 1'b1;
                 ub_rd_en        = 1'b1;
@@ -635,7 +620,6 @@ always @* begin
                 sys_mode        = 2'b10;  // Accumulate mode
                 sys_rows        = exec_arg3;
                 sys_signed      = exec_flags[1];
-                sys_transpose   = exec_flags[0];
                 sys_acc_addr    = exec_arg2;
                 sys_acc_clear   = 1'b0;  // Don't clear - accumulate!
                 ub_rd_en        = 1'b1;
@@ -654,9 +638,6 @@ always @* begin
             RELU_OP: begin
                 vpu_start       = 1'b1;
                 vpu_mode        = 4'h1;   // ReLU mode
-                vpu_in_addr     = exec_arg1;
-                vpu_out_addr    = exec_arg2;
-                vpu_length      = exec_arg3;
                 vpu_param       = exec_flags[0] ? cfg_registers[{6'b0, exec_flags}] : 16'h0000;
                 acc_rd_en       = 1'b1;
                 acc_addr        = exec_arg1;
@@ -674,9 +655,6 @@ always @* begin
             RELU6_OP: begin
                 vpu_start       = 1'b1;
                 vpu_mode        = 4'h2;   // ReLU6 mode
-                vpu_in_addr     = exec_arg1;
-                vpu_out_addr    = exec_arg2;
-                vpu_length      = exec_arg3;
                 vpu_param       = exec_flags[0] ? cfg_registers[{6'b0, exec_flags}] : 16'h0000;
                 acc_rd_en       = 1'b1;
                 acc_addr        = exec_arg1;
@@ -694,9 +672,6 @@ always @* begin
             SIGMOID_OP: begin
                 vpu_start       = 1'b1;
                 vpu_mode        = 4'h3;   // Sigmoid mode
-                vpu_in_addr     = exec_arg1;
-                vpu_out_addr    = exec_arg2;
-                vpu_length      = exec_arg3;
                 vpu_param       = exec_flags[0] ? cfg_registers[{6'b0, exec_flags}] : 16'h0000;
                 acc_rd_en       = 1'b1;
                 acc_addr        = exec_arg1;
@@ -714,9 +689,6 @@ always @* begin
             TANH_OP: begin
                 vpu_start       = 1'b1;
                 vpu_mode        = 4'h4;   // Tanh mode
-                vpu_in_addr     = exec_arg1;
-                vpu_out_addr    = exec_arg2;
-                vpu_length      = exec_arg3;
                 vpu_param       = exec_flags[0] ? cfg_registers[{6'b0, exec_flags}] : 16'h0000;
                 acc_rd_en       = 1'b1;
                 acc_addr        = exec_arg1;
@@ -734,8 +706,6 @@ always @* begin
             MAXPOOL_OP: begin
                 vpu_start       = 1'b1;
                 vpu_mode        = 4'h6;   // Max pool mode
-                vpu_in_addr     = exec_arg1;
-                vpu_out_addr    = exec_arg2;
                 ub_rd_en        = 1'b1;
                 ub_rd_addr      = {exec_ub_buf_sel, exec_arg1};
                 ub_rd_count     = 9'h001;
@@ -752,8 +722,6 @@ always @* begin
             AVGPOOL_OP: begin
                 vpu_start       = 1'b1;
                 vpu_mode        = 4'h7;   // Avg pool mode
-                vpu_in_addr     = exec_arg1;
-                vpu_out_addr    = exec_arg2;
                 ub_rd_en        = 1'b1;
                 ub_rd_addr      = {exec_ub_buf_sel, exec_arg1};
                 ub_rd_count     = 9'h001;
@@ -770,9 +738,6 @@ always @* begin
             ADD_BIAS_OP: begin
                 vpu_start       = 1'b1;
                 vpu_mode        = 4'h5;   // Bias add mode
-                vpu_in_addr     = exec_arg1;
-                vpu_out_addr    = exec_arg2;
-                vpu_length      = exec_arg3;
                 acc_rd_en       = 1'b1;
                 acc_addr        = exec_arg1;
                 acc_buf_sel     = ~exec_acc_buf_sel;
@@ -792,8 +757,6 @@ always @* begin
             BATCH_NORM_OP: begin
                 vpu_start       = 1'b1;
                 vpu_mode        = 4'h8;   // Batch norm mode
-                vpu_in_addr     = exec_arg1;
-                vpu_out_addr    = exec_arg2;
                 vpu_param       = {8'h00, exec_arg3};  // Config register base index
                 ub_rd_en        = 1'b1;
                 ub_rd_addr      = {exec_ub_buf_sel, exec_arg1};
@@ -812,11 +775,9 @@ always @* begin
                 sync_wait       = 1'b1;
                 sync_mask       = exec_arg1[3:0];
                 sync_timeout    = {exec_arg2, exec_arg3};
-                // Toggle all buffer selectors (use pipelined state)
+                // Toggle all buffer selectors
                 // The actual toggle happens in buffer state register update logic
-                wt_buf_sel      = ~exec_wt_buf_sel;
                 acc_buf_sel     = ~exec_acc_buf_sel;
-                ub_buf_sel      = ~exec_ub_buf_sel;
                 pc_cnt_internal = 1'b0;  // Stall PC!
                 ir_ld_internal  = 1'b1;  // Continue loading but don't execute
             end

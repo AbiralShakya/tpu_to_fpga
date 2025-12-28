@@ -7,7 +7,6 @@ module unified_buffer #(
 )(
     input  logic                    clk,
     input  logic                    rst_n,
-    input  logic                    ub_buf_sel,     // Double-buffering control
 
     // Unified Read/Write Interface (alternates per clock cycle)
     input  logic                    ub_rd_en,
@@ -225,11 +224,10 @@ assign ub_done = (rd_state == RD_IDLE) && (wr_state == WR_IDLE) &&
 // =============================================================================
 // This is a design-time check - if rd_bank_sel_latched == wr_bank_sel_latched, there's a bug
 // In normal operation with proper double buffering:
-//   - rd_bank_sel = ub_buf_sel (active bank for reading)
-//   - wr_bank_sel = ~ub_buf_sel (inactive bank for writing)
+//   - rd_bank_sel = ub_rd_addr[8] (bank selection from address bit 8)
+//   - wr_bank_sel = ub_wr_addr[8] (bank selection from address bit 8)
 //   - Both are LATCHED when enable is asserted to prevent mid-operation bank switching
-//   - This is critical for UART/ISA transitions where ub_buf_sel may change while
-//     an operation is in progress
+//   - This is critical for UART/ISA transitions where the address may be set by different sources
 // Note: This check is commented out to avoid synthesis issues, but serves as documentation
 // `ifdef SIMULATION
 //     always @(posedge clk) begin

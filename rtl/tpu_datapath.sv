@@ -5,33 +5,29 @@ module tpu_datapath (
     input  logic        rst_n,
 
     // =============================================================================
-    // CONTROL SIGNALS FROM CONTROLLER (29 signals)
+    // CONTROL SIGNALS FROM CONTROLLER (22 signals)
     // =============================================================================
 
-    // Systolic Array Control (7 signals)
+    // Systolic Array Control (6 signals)
     input  logic        sys_start,       // Start systolic operation
     input  logic [1:0]  sys_mode,        // Operation mode (00=MatMul, 01=Conv2D, 10=Accumulate)
     input  logic [7:0]  sys_rows,         // Number of rows to process
     input  logic        sys_signed,      // Signed/unsigned arithmetic
-    input  logic        sys_transpose,    // Transpose input matrix
     input  logic [7:0]  sys_acc_addr,    // Accumulator write address
     input  logic        sys_acc_clear,   // Clear accumulator before write
 
-    // Unified Buffer Control (7 signals)
+    // Unified Buffer Control (6 signals)
     input  logic        ub_rd_en,        // UB read enable
     input  logic        ub_wr_en,         // UB write enable
     input  logic [8:0]  ub_rd_addr,       // Read address + bank select
     input  logic [8:0]  ub_wr_addr,       // Write address + bank select
     input  logic [8:0]  ub_rd_count,      // Read burst count
     input  logic [8:0]  ub_wr_count,      // Write burst count
-    input  logic        ub_buf_sel,      // Bank selection
 
-    // Weight FIFO Control (5 signals)
+    // Weight FIFO Control (3 signals)
     input  logic        wt_mem_rd_en,    // Read from weight DRAM
-    input  logic [23:0] wt_mem_addr,     // DRAM address
     input  logic        wt_fifo_wr,      // Weight FIFO write enable
     input  logic [7:0]  wt_num_tiles,     // Number of tiles to load
-    input  logic        wt_buf_sel,      // Weight buffer selection
 
     // Accumulator Control (4 signals)
     input  logic        acc_wr_en,       // Accumulator write enable
@@ -39,12 +35,9 @@ module tpu_datapath (
     input  logic [7:0]  acc_addr,        // Accumulator address
     input  logic        acc_buf_sel,     // Accumulator buffer selection
 
-    // VPU Control (6 signals)
+    // VPU Control (3 signals)
     input  logic        vpu_start,       // Start VPU operation
     input  logic [3:0]  vpu_mode,        // VPU function selection
-    input  logic [7:0]  vpu_in_addr,     // VPU input address
-    input  logic [7:0]  vpu_out_addr,    // VPU output address
-    input  logic [7:0]  vpu_length,      // Number of elements
     input  logic [15:0] vpu_param,       // VPU operation parameter
 
     // Data interfaces
@@ -117,8 +110,6 @@ systolic_controller systolic_ctrl (
     .sys_start       (sys_start),
     .sys_mode        (sys_mode),
     .sys_rows        (sys_rows),
-    .sys_signed      (sys_signed),
-    .sys_transpose   (sys_transpose),
     .sys_acc_addr    (sys_acc_addr),
     .sys_acc_clear   (sys_acc_clear),
     .sys_busy        (sys_busy),
@@ -331,7 +322,6 @@ assign vpu_done = vpu_out_valid;  // Done when output valid
 unified_buffer ub (
     .clk             (clk),
     .rst_n           (rst_n),
-    .ub_buf_sel      (ub_buf_sel),
     .ub_rd_en        (ub_rd_en),
     .ub_rd_addr      (ub_rd_addr),
     .ub_rd_count     (ub_rd_count),

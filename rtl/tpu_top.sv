@@ -51,19 +51,18 @@ module tpu_top (
 // =============================================================================
 
 // =============================================================================
-// CONTROLLER TO DATAPATH CONTROL SIGNALS (29 signals)
+// CONTROLLER TO DATAPATH CONTROL SIGNALS (23 signals)
 // =============================================================================
 
-// Systolic Array Control (7 signals)
+// Systolic Array Control (6 signals)
 logic        sys_start;
 logic [1:0]  sys_mode;
 logic [7:0]  sys_rows;
 logic        sys_signed;
-logic        sys_transpose;
 logic [7:0]  sys_acc_addr;
 logic        sys_acc_clear;
 
-// Unified Buffer Control (7 signals)
+// Unified Buffer Control (6 signals)
 // Controller outputs
 logic        ctrl_ub_rd_en;
 logic        ctrl_ub_wr_en;
@@ -71,7 +70,6 @@ logic [8:0]  ctrl_ub_rd_addr;
 logic [8:0]  ctrl_ub_wr_addr;
 logic [8:0]  ctrl_ub_rd_count;
 logic [8:0]  ctrl_ub_wr_count;
-logic        ctrl_ub_buf_sel;
 
 // Multiplexed signals to datapath
 logic        ub_rd_en;
@@ -80,14 +78,12 @@ logic [8:0]  ub_rd_addr;
 logic [8:0]  ub_wr_addr;
 logic [8:0]  ub_rd_count;
 logic [8:0]  ub_wr_count;
-logic        ub_buf_sel;
 
-// Weight FIFO Control (5 signals)
+// Weight FIFO Control (4 signals)
 logic        wt_mem_rd_en;
 logic [23:0] wt_mem_addr;
 logic        wt_fifo_wr;
 logic [7:0]  wt_num_tiles;
-logic        wt_buf_sel;
 
 // Accumulator Control (4 signals)
 logic        acc_wr_en;
@@ -95,12 +91,9 @@ logic        acc_rd_en;
 logic [7:0]  acc_addr;
 logic        acc_buf_sel;
 
-// VPU Control (6 signals)
+// VPU Control (3 signals)
 logic        vpu_start;
 logic [3:0]  vpu_mode;
-logic [7:0]  vpu_in_addr;
-logic [7:0]  vpu_out_addr;
-logic [7:0]  vpu_length;
 logic [15:0] vpu_param;
 
 // =============================================================================
@@ -246,7 +239,6 @@ tpu_controller controller (
     .sys_mode      (sys_mode),
     .sys_rows      (sys_rows),
     .sys_signed    (sys_signed),
-    .sys_transpose (sys_transpose),
     .sys_acc_addr  (sys_acc_addr),
     .sys_acc_clear (sys_acc_clear),
 
@@ -257,14 +249,12 @@ tpu_controller controller (
     .ub_wr_addr    (ctrl_ub_wr_addr),
     .ub_rd_count   (ctrl_ub_rd_count),
     .ub_wr_count   (ctrl_ub_wr_count),
-    .ub_buf_sel    (ctrl_ub_buf_sel),
 
     // Weight FIFO Control
     .wt_mem_rd_en  (wt_mem_rd_en),
     .wt_mem_addr   (wt_mem_addr),
     .wt_fifo_wr    (wt_fifo_wr),
     .wt_num_tiles  (wt_num_tiles),
-    .wt_buf_sel    (wt_buf_sel),
 
     // Accumulator Control
     .acc_wr_en     (acc_wr_en),
@@ -275,9 +265,6 @@ tpu_controller controller (
     // VPU Control
     .vpu_start     (vpu_start),
     .vpu_mode      (vpu_mode),
-    .vpu_in_addr   (vpu_in_addr),
-    .vpu_out_addr  (vpu_out_addr),
-    .vpu_length    (vpu_length),
     .vpu_param     (vpu_param),
 
     // DMA Control (passed through to external DMA)
@@ -386,7 +373,6 @@ tpu_datapath datapath (
     .sys_mode       (sys_mode),
     .sys_rows       (sys_rows),
     .sys_signed     (sys_signed),
-    .sys_transpose  (sys_transpose),
     .sys_acc_addr   (sys_acc_addr),
     .sys_acc_clear  (sys_acc_clear),
 
@@ -397,14 +383,11 @@ tpu_datapath datapath (
     .ub_wr_addr     (ub_wr_addr),
     .ub_rd_count    (ub_rd_count),
     .ub_wr_count    (ub_wr_count),
-    .ub_buf_sel     (ub_buf_sel),
 
     // Weight FIFO Control
     .wt_mem_rd_en   (wt_mem_rd_en),
-    .wt_mem_addr    (wt_mem_addr),
     .wt_fifo_wr     (wt_fifo_wr),
     .wt_num_tiles   (wt_num_tiles),
-    .wt_buf_sel     (wt_buf_sel),
 
     // Accumulator Control
     .acc_wr_en      (acc_wr_en),
@@ -415,9 +398,6 @@ tpu_datapath datapath (
     // VPU Control
     .vpu_start      (vpu_start),
     .vpu_mode       (vpu_mode),
-    .vpu_in_addr    (vpu_in_addr),
-    .vpu_out_addr   (vpu_out_addr),
-    .vpu_length     (vpu_length),
     .vpu_param      (vpu_param),
 
     // Data interfaces
@@ -457,9 +437,7 @@ assign ub_wr_addr = use_test_interface ? test_ub_wr_addr : ctrl_ub_wr_addr;  // 
 assign ub_rd_addr = use_test_interface ? test_ub_rd_addr : ctrl_ub_rd_addr;  // Already 9-bit
 assign ub_wr_count = use_test_interface ? test_ub_wr_count : ctrl_ub_wr_count;
 assign ub_rd_count = use_test_interface ? test_ub_rd_count : ctrl_ub_rd_count;
-// For UART: Use ub_buf_sel=1 for writes (so wr_bank_sel=0), ub_buf_sel=0 for reads (so rd_bank_sel=0)
-// This ensures both access bank 0, overcoming the double-buffering design
-assign ub_buf_sel = use_test_interface ? (test_ub_wr_en ? 1'b1 : 1'b0) : ctrl_ub_buf_sel;
+// Bank selection is now handled via address bit 8 (ub_rd_addr[8] and ub_wr_addr[8])
 
 // Weight FIFO data (from TEST INTERFACE or legacy DMA)
 // Weight data comes from weight memory during RD_WEIGHT execution
@@ -498,8 +476,8 @@ assign hazard_detected = pipeline_stall;
 
 // Bank selection debug signal:
 // [7]   = use_test_interface (1 = UART controls UB, 0 = controller controls UB)
-// [6]   = ub_buf_sel (actual signal to unified_buffer)
-// [5]   = ctrl_ub_buf_sel (controller's buffer selection)
+// [6]   = ub_rd_addr[8] (read bank selection via address bit)
+// [5]   = ub_wr_addr[8] (write bank selection via address bit)
 // [4]   = ub_busy (unified buffer busy flag)
 // [3]   = ub_rd_en (read enable)
 // [2]   = ub_wr_en (write enable)
@@ -507,8 +485,8 @@ assign hazard_detected = pipeline_stall;
 // [0]   = test_ub_wr_en (UART write enable)
 assign debug_bank_state = {
     use_test_interface,
-    ub_buf_sel,
-    ctrl_ub_buf_sel,
+    ub_rd_addr[8],
+    ub_wr_addr[8],
     ub_busy,
     ub_rd_en,
     ub_wr_en,
