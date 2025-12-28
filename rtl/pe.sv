@@ -10,6 +10,7 @@ module pe #(
     // Control signals (tinytinyTPU compatible)
     input  logic                    en_weight_pass,    // Pass psum through (always during load phase)
     input  logic                    en_weight_capture, // Capture weight from psum (per-PE timing for diagonal)
+    input  logic                    use_signed,        // Use signed arithmetic (from MATMUL instruction)
 
     // Data inputs (tinytinyTPU compatible interface)
     input  logic [DATA_WIDTH-1:0]   act_in,            // Activation input (flows right)
@@ -26,6 +27,29 @@ module pe #(
 
 // Weight register (loaded from psum input path like tinytinyTPU)
 logic [DATA_WIDTH-1:0] weight_reg;
+
+// Signed versions for multiplication
+logic signed [DATA_WIDTH-1:0]   act_signed, weight_signed;
+logic signed [2*DATA_WIDTH-1:0] product_signed;
+logic        [2*DATA_WIDTH-1:0] product_unsigned;
+logic signed [ACC_WIDTH-1:0]    product_extended;
+
+// =============================================================================
+// SIGNED/UNSIGNED MULTIPLICATION LOGIC
+// =============================================================================
+
+// Cast to signed for signed multiplication
+assign act_signed    = $signed(act_in);
+assign weight_signed = $signed(weight_reg);
+
+// Compute both signed and unsigned products
+assign product_signed   = act_signed * weight_signed;
+assign product_unsigned = act_in * weight_reg;
+
+// Sign-extend or zero-extend product to accumulator width
+assign product_extended = use_signed ?
+    {{(ACC_WIDTH-2*DATA_WIDTH){product_signed[2*DATA_WIDTH-1]}}, product_signed} :
+    {{(ACC_WIDTH-2*DATA_WIDTH){1'b0}}, product_unsigned};
 
 // =============================================================================
 // PE LOGIC (tinytinyTPU compatible)
@@ -48,9 +72,9 @@ always_ff @(posedge clk or negedge rst_n) begin
             end
         end
         else begin
-            // Compute mode: MAC operation
+            // Compute mode: MAC operation with signed/unsigned support
             act_out <= act_in;
-            psum_out <= psum_in + (act_in * weight_reg);
+            psum_out <= $signed(psum_in) + product_extended;
         end
     end
 end

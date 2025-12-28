@@ -124,7 +124,9 @@ always @(posedge clk) begin
                 rd_current_addr <= rd_current_addr + 1'b1;
                 rd_burst_count <= rd_burst_count - 1'b1;
 
-                if (rd_burst_count == 0) begin
+                // CRITICAL FIX: Check ==1 (not ==0) because comparison uses OLD value before decrement
+                // This matches RD_READ's check and prevents reading one extra word
+                if (rd_burst_count == 1) begin
                     rd_state <= RD_IDLE;
                     ub_rd_valid <= 1'b0;
                 end
@@ -193,7 +195,9 @@ always @(posedge clk) begin
                 wr_burst_count <= wr_burst_count - 1'b1;
                 ub_wr_ready <= 1'b1;
 
-                if (wr_burst_count == 0) begin
+                // CRITICAL FIX: Check ==1 (not ==0) because comparison uses OLD value before decrement
+                // This matches WR_WRITE's check and prevents writing one extra word
+                if (wr_burst_count == 1) begin
                     wr_state <= WR_IDLE;
                 end
             end

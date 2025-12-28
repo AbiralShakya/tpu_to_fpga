@@ -13,6 +13,7 @@ module mmu #(
     input  logic                    en_capture_col0,     // Capture enable for column 0 PEs
     input  logic                    en_capture_col1,     // Capture enable for column 1 PEs
     input  logic                    en_capture_col2,     // Capture enable for column 2 PEs (our extension)
+    input  logic                    use_signed,          // Use signed arithmetic (from MATMUL instruction)
 
     // UB activations input (tinytinyTPU compatible interface)
     input  logic [DATA_WIDTH-1:0]   row0_in,             // Row 0 activation input
@@ -41,21 +42,27 @@ logic [ACC_WIDTH-1:0]  pe_psum_in [ARRAY_SIZE][ARRAY_SIZE];  // psum[row][col]
 logic [ACC_WIDTH-1:0]  pe_psum_out[ARRAY_SIZE][ARRAY_SIZE];  // psum[row][col]
 
 // Row1 and Row2 skew registers for systolic timing (tinytinyTPU approach)
-logic [DATA_WIDTH-1:0] row1_skew_reg, row2_skew_reg;
+logic [DATA_WIDTH-1:0] row1_skew_reg;
+logic [DATA_WIDTH-1:0] row2_delay1, row2_skew_reg;  // Two-stage delay for row2
 
 // =============================================================================
 // SYSTOLIC ARRAY CONNECTIONS (tinytinyTPU compatible)
 // =============================================================================
 
 // Row skew registers for systolic timing
+// CRITICAL: Each row needs its OWN delay chain, not shared!
+// Row1 gets 1-cycle delay, Row2 gets 2-cycle delay for diagonal wavefront
 always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         row1_skew_reg <= {DATA_WIDTH{1'b0}};
+        row2_delay1   <= {DATA_WIDTH{1'b0}};
         row2_skew_reg <= {DATA_WIDTH{1'b0}};
     end else begin
-        // Row1 gets 1-cycle delay, Row2 gets 2-cycle delay for wavefront
+        // Row1: 1-cycle delay
         row1_skew_reg <= row1_in;
-        row2_skew_reg <= row1_skew_reg;
+        // Row2: 2-cycle delay (through its OWN delay chain, not row1's!)
+        row2_delay1   <= row2_in;       // First delay stage
+        row2_skew_reg <= row2_delay1;   // Second delay stage
     end
 end
 
@@ -85,6 +92,7 @@ pe pe00 (
     .rst_n(rst_n),
     .en_weight_pass(en_weight_pass),
     .en_weight_capture(en_capture_col0),  // Column 0 capture timing
+    .use_signed(use_signed),              // Signed arithmetic control
     .act_in(row0_in),
     .psum_in({24'b0, col0_in}),           // Weights loaded through psum path
     .act_out(pe00_01_act),
@@ -96,6 +104,7 @@ pe pe01 (
     .rst_n(rst_n),
     .en_weight_pass(en_weight_pass),
     .en_weight_capture(en_capture_col1),  // Column 1 capture timing (staggered)
+    .use_signed(use_signed),              // Signed arithmetic control
     .act_in(pe00_01_act),
     .psum_in({24'b0, col1_in}),           // Weights loaded through psum path
     .act_out(pe01_02_act),
@@ -107,6 +116,7 @@ pe pe02 (
     .rst_n(rst_n),
     .en_weight_pass(en_weight_pass),
     .en_weight_capture(en_capture_col2),  // Column 2 capture timing (our extension)
+    .use_signed(use_signed),              // Signed arithmetic control
     .act_in(pe01_02_act),
     .psum_in({24'b0, col2_in}),           // Weights loaded through psum path
     .act_out(),                           // Activation unconnected at edge
@@ -118,6 +128,7 @@ pe pe10 (
     .rst_n(rst_n),
     .en_weight_pass(en_weight_pass),
     .en_weight_capture(en_capture_col0),  // Column 0 capture timing
+    .use_signed(use_signed),              // Signed arithmetic control
     .act_in(row1_skew_reg),               // Delayed row1 input
     .psum_in(pe00_10_psum),
     .act_out(pe10_11_act),
@@ -129,6 +140,7 @@ pe pe11 (
     .rst_n(rst_n),
     .en_weight_pass(en_weight_pass),
     .en_weight_capture(en_capture_col1),  // Column 1 capture timing (staggered)
+    .use_signed(use_signed),              // Signed arithmetic control
     .act_in(pe10_11_act),
     .psum_in(pe01_11_psum),
     .act_out(pe11_12_act),
@@ -140,6 +152,7 @@ pe pe12 (
     .rst_n(rst_n),
     .en_weight_pass(en_weight_pass),
     .en_weight_capture(en_capture_col2),  // Column 2 capture timing (our extension)
+    .use_signed(use_signed),              // Signed arithmetic control
     .act_in(pe11_12_act),
     .psum_in(pe02_12_psum),
     .act_out(),                           // Activation unconnected at edge
@@ -151,6 +164,7 @@ pe pe20 (
     .rst_n(rst_n),
     .en_weight_pass(en_weight_pass),
     .en_weight_capture(en_capture_col0),  // Column 0 capture timing
+    .use_signed(use_signed),              // Signed arithmetic control
     .act_in(row2_skew_reg),               // Double-delayed row2 input
     .psum_in(pe10_20_psum),
     .act_out(pe20_21_act),
@@ -162,6 +176,7 @@ pe pe21 (
     .rst_n(rst_n),
     .en_weight_pass(en_weight_pass),
     .en_weight_capture(en_capture_col1),  // Column 1 capture timing (staggered)
+    .use_signed(use_signed),              // Signed arithmetic control
     .act_in(pe20_21_act),
     .psum_in(pe11_21_psum),
     .act_out(pe21_22_act),
@@ -173,6 +188,7 @@ pe pe22 (
     .rst_n(rst_n),
     .en_weight_pass(en_weight_pass),
     .en_weight_capture(en_capture_col2),  // Column 2 capture timing (our extension)
+    .use_signed(use_signed),              // Signed arithmetic control
     .act_in(pe21_22_act),
     .psum_in(pe12_22_psum),
     .act_out(),                           // Activation unconnected at edge

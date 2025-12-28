@@ -180,6 +180,7 @@ mmu systolic_array (
     .en_capture_col0 (en_capture_col0),
     .en_capture_col1 (en_capture_col1),
     .en_capture_col2 (en_capture_col2),
+    .use_signed      (sys_signed),            // Signed arithmetic control from controller
     .row0_in         (row0_act),
     .row1_in         (row1_act),
     .row2_in         (row2_act),
