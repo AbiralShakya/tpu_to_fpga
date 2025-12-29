@@ -58,6 +58,14 @@ module tpu_top_wrapper (
     (* keep = "true" *) logic [7:0]  uart_debug_state_internal;
     (* keep = "true" *) logic [7:0]  uart_debug_cmd_internal;
     (* keep = "true" *) logic [15:0] uart_debug_byte_count_internal;
+    (* keep = "true" *) logic [7:0]  debug_bank_state_internal;
+
+    // NEW: Mux debug signals for ST_UB write failure diagnosis
+    (* keep = "true" *) logic        debug_use_test_interface_internal;
+    (* keep = "true" *) logic        debug_ctrl_ub_wr_en_internal;
+    (* keep = "true" *) logic        debug_test_ub_wr_en_internal;
+    (* keep = "true" *) logic        debug_test_instr_wr_en_internal;
+    (* keep = "true" *) logic        debug_final_ub_wr_en_internal;
 
     // Instantiate tpu_top with outputs connected to prevent optimization
     tpu_top tpu_inst (
@@ -93,7 +101,14 @@ module tpu_top_wrapper (
         .uart_debug_state(uart_debug_state_internal),
         .uart_debug_cmd(uart_debug_cmd_internal),
         .uart_debug_byte_count(uart_debug_byte_count_internal),
-        .debug_bank_state()  // Bank selection debug (not connected to wrapper outputs)
+        .debug_bank_state(debug_bank_state_internal),
+
+        // NEW: Mux debug signals for ST_UB write failure diagnosis
+        .debug_use_test_interface(debug_use_test_interface_internal),
+        .debug_ctrl_ub_wr_en(debug_ctrl_ub_wr_en_internal),
+        .debug_test_ub_wr_en(debug_test_ub_wr_en_internal),
+        .debug_test_instr_wr_en(debug_test_instr_wr_en_internal),
+        .debug_final_ub_wr_en(debug_final_ub_wr_en_internal)
     );
 
     //==========================================================================
@@ -101,12 +116,16 @@ module tpu_top_wrapper (
     //==========================================================================
     // Mix TPU internal signals with LED outputs to prevent optimization
     // This ensures the entire TPU datapath must be synthesized
+    // UPDATED: Include new mux debug signals to diagnose ST_UB write failure
     //==========================================================================
     assign {led15, led14, led13, led12, led11, led10, led9, led8, led7, led6, led5, led4, led3, led2, led1, led0} =
            tpu_led_internal | {
-               8'b0,  // Upper 8 LEDs from test interface
-               uart_debug_byte_count_internal[7:6],  // UART byte count
-               uart_debug_cmd_internal[3:2],          // UART command
+               debug_bank_state_internal[7:4],        // Bank state [7:4] (NEW)
+               debug_use_test_interface_internal,     // use_test_interface (NEW)
+               debug_ctrl_ub_wr_en_internal,          // ctrl_ub_wr_en (NEW)
+               debug_test_ub_wr_en_internal,          // test_ub_wr_en (NEW)
+               debug_test_instr_wr_en_internal,       // test_instr_wr_en (NEW)
+               debug_final_ub_wr_en_internal,         // final ub_wr_en (NEW)
                uart_debug_state_internal[1:0],        // UART state
                tpu_busy_internal,                     // TPU busy (CRITICAL!)
                tpu_done_internal                      // TPU done (CRITICAL!)

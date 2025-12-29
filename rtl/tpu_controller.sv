@@ -214,6 +214,12 @@ end
 always @ (posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         ir_reg <= 32'h00000000;
+    end else if (start_execution) begin
+        // CRITICAL: Clear IR on start_execution to prevent old instruction
+        // from polluting the first pipeline cycle. Without this, the old
+        // instruction (e.g., HALT from previous run) gets decoded and executed
+        // before the new program's first instruction.
+        ir_reg <= 32'h00000000;  // NOP
     end else if (ir_ld_internal && !if_id_stall) begin
         ir_reg <= instr_data;
     end
@@ -409,8 +415,9 @@ always @ (posedge clk or negedge rst_n) begin
         exec_wt_buf_sel  <= 1'b0;
         exec_acc_buf_sel <= 1'b0;
         exec_ub_buf_sel  <= 1'b0;
-    end else begin
-        // Pipeline advance - propagate buffer state from decode stage
+    end else if (!if_id_stall) begin
+        // CRITICAL: Only advance exec stage when NOT stalled
+        // This ensures each instruction executes exactly once
         exec_valid  <= if_id_valid;
         exec_opcode <= if_id_opcode;
         exec_arg1   <= if_id_arg1;
@@ -422,6 +429,8 @@ always @ (posedge clk or negedge rst_n) begin
         exec_acc_buf_sel <= if_id_acc_buf_sel;
         exec_ub_buf_sel  <= if_id_ub_buf_sel;
     end
+    // When stalled, exec stage HOLDS its current values
+    // The instruction already in exec continues executing (or waiting)
 end
 
 // =============================================================================
@@ -564,12 +573,18 @@ always @* begin
             // ================================================================
             // 0x05: ST_UB - Store to Unified Buffer
             // ================================================================
-            // Write to same bank as LD_UB reads from (bank 0 when exec_ub_buf_sel=0)
-            // This ensures UART can read the results after ISA execution
+            // Read from accumulator memory and write to unified buffer
+            // For 3x3 MATMUL: Results are at addresses 0, 1, 2 (acc0, acc1, acc2)
+            // ST_UB reads from accumulator address 0 (MATMUL base address)
+            // and writes to UB address specified by exec_arg1
+            // exec_arg2 specifies the count (number of bytes to write)
             ST_UB_OP: begin
-                ub_wr_en        = 1'b1;
-                ub_wr_addr      = {exec_ub_buf_sel, exec_arg1};  // Same bank as LD_UB
-                ub_wr_count     = {1'b0, exec_arg2};
+                acc_rd_en       = 1'b1;                         // Read from accumulator
+                acc_addr        = 8'h00;                         // Always read from address 0 (MATMUL results)
+                acc_buf_sel     = exec_acc_buf_sel;             // Use configured buffer
+                ub_wr_en        = 1'b1;                         // Write to unified buffer
+                ub_wr_addr      = {exec_ub_buf_sel, exec_arg1}; // Use arg1 as UB address
+                ub_wr_count     = {1'b0, exec_arg2};            // Use arg2 as count
                 pc_cnt_internal = 1'b1;
                 ir_ld_internal  = 1'b1;
             end

@@ -17,9 +17,16 @@ module systolic_controller (
 
     // Control outputs to systolic array
     output logic        en_weight_pass,
-    output logic        en_capture_col0,
-    output logic        en_capture_col1,
-    output logic        en_capture_col2,
+    // Row+column specific capture signals for staggered timing (registered pass-through delay)
+    output logic        en_capture_row0_col0,  // Row 0, Column 0 (pe00)
+    output logic        en_capture_row0_col1,  // Row 0, Column 1 (pe01)
+    output logic        en_capture_row0_col2,  // Row 0, Column 2 (pe02)
+    output logic        en_capture_row1_col0,  // Row 1, Column 0 (pe10) - 1 cycle delay
+    output logic        en_capture_row1_col1,  // Row 1, Column 1 (pe11) - 1 cycle delay
+    output logic        en_capture_row1_col2,  // Row 1, Column 2 (pe12) - 1 cycle delay
+    output logic        en_capture_row2_col0,  // Row 2, Column 0 (pe20) - 2 cycle delay
+    output logic        en_capture_row2_col1,  // Row 2, Column 1 (pe21) - 2 cycle delay
+    output logic        en_capture_row2_col2,  // Row 2, Column 2 (pe22) - 2 cycle delay
 
     // Data flow control
     output logic        systolic_active,
@@ -27,6 +34,8 @@ module systolic_controller (
     // Additional control outputs
     output logic        acc_wr_en,        // Accumulator write enable
     output logic [7:0]  acc_wr_addr,      // Accumulator write address
+    output logic        acc_wr_col01,     // Write acc0+acc1 (even addresses)
+    output logic        acc_wr_col2,      // Write acc2 (odd addresses)
     output logic        acc_clear         // Accumulator clear signal
 );
 
@@ -76,15 +85,19 @@ always_comb begin
         end
 
         SYS_LOAD_WEIGHTS: begin
-            // 3-cycle diagonal wavefront weight loading
-            if (weight_load_counter >= 3) begin
+            // 5-cycle diagonal wavefront weight loading (3x3 array with staggered timing)
+            // CRITICAL: Counter starts at 1 on first cycle (set in always_ff), so check for >= 5
+            if (weight_load_counter >= 5) begin
                 next_state = SYS_COMPUTE;
             end
         end
 
         SYS_COMPUTE: begin
             // Compute for total_rows + 1 cycles (skew compensation)
-            if (compute_counter >= total_rows + 1) begin
+            // CRITICAL: Need enough cycles to write all accumulator results
+            // For 3x3: Need at least PIPELINE_LATENCY (4) + 3 writes = 7 cycles minimum
+            // Use max(total_rows + 1, PIPELINE_LATENCY + total_rows) to ensure all writes complete
+            if (compute_counter >= (total_rows + 1 + PIPELINE_LATENCY)) begin
                 next_state = SYS_WAIT;
             end
         end
@@ -111,6 +124,8 @@ end
 always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         weight_load_counter <= 8'h00;
+    end else if (next_state == SYS_LOAD_WEIGHTS && current_state != SYS_LOAD_WEIGHTS) begin
+        weight_load_counter <= 8'h01;
     end else if (current_state == SYS_LOAD_WEIGHTS) begin
         weight_load_counter <= weight_load_counter + 1'b1;
     end else begin
@@ -142,29 +157,46 @@ end
 // Weight loading timing (3-cycle diagonal wavefront)
 assign en_weight_pass = (current_state == SYS_LOAD_WEIGHTS);
 
-// Staggered column capture for diagonal wavefront (3x3 array)
+// Staggered row+column capture for diagonal wavefront (3x3 array)
+// Timing accounts for registered pass-through delay: 1 cycle per row
+// Cycle 1: Row 0, Column 0 (pe00) - sees col0_in directly
+// Cycle 2: Row 0, Column 1 (pe01) AND Row 1, Column 0 (pe10) - pe10 sees pe00's output (1 cycle delay)
+// Cycle 3: Row 0, Column 2 (pe02) AND Row 1, Column 1 (pe11) AND Row 2, Column 0 (pe20) - pe20 sees pe10's output (2 cycle delay)
+// Cycle 4: Row 1, Column 2 (pe12) AND Row 2, Column 1 (pe21)
+// Cycle 5: Row 2, Column 2 (pe22)
 always_comb begin
+    // Default all to 0
+    en_capture_row0_col0 = 1'b0;
+    en_capture_row0_col1 = 1'b0;
+    en_capture_row0_col2 = 1'b0;
+    en_capture_row1_col0 = 1'b0;
+    en_capture_row1_col1 = 1'b0;
+    en_capture_row1_col2 = 1'b0;
+    en_capture_row2_col0 = 1'b0;
+    en_capture_row2_col1 = 1'b0;
+    en_capture_row2_col2 = 1'b0;
+    
     case (weight_load_counter)
-        8'h01: begin  // Cycle 1: Capture column 0
-            en_capture_col0 = 1'b1;
-            en_capture_col1 = 1'b0;
-            en_capture_col2 = 1'b0;
+        8'h01: begin  // Cycle 1: Row 0, Column 0
+            en_capture_row0_col0 = 1'b1;
         end
-        8'h02: begin  // Cycle 2: Hold column 0, capture column 1
-            en_capture_col0 = 1'b0;
-            en_capture_col1 = 1'b1;
-            en_capture_col2 = 1'b0;
+        8'h02: begin  // Cycle 2: Row 0, Column 1 AND Row 1, Column 0
+            en_capture_row0_col1 = 1'b1;
+            en_capture_row1_col0 = 1'b1;
         end
-        8'h03: begin  // Cycle 3: Hold columns 0-1, capture column 2
-            en_capture_col0 = 1'b0;
-            en_capture_col1 = 1'b0;
-            en_capture_col2 = 1'b1;
+        8'h03: begin  // Cycle 3: Row 0, Column 2 AND Row 1, Column 1 AND Row 2, Column 0
+            en_capture_row0_col2 = 1'b1;
+            en_capture_row1_col1 = 1'b1;
+            en_capture_row2_col0 = 1'b1;
         end
-        default: begin  // Other cycles: no capture
-            en_capture_col0 = 1'b0;
-            en_capture_col1 = 1'b0;
-            en_capture_col2 = 1'b0;
+        8'h04: begin  // Cycle 4: Row 1, Column 2 AND Row 2, Column 1
+            en_capture_row1_col2 = 1'b1;
+            en_capture_row2_col1 = 1'b1;
         end
+        8'h05: begin  // Cycle 5: Row 2, Column 2
+            en_capture_row2_col2 = 1'b1;
+        end
+        default: ; // All already 0
     endcase
 end
 
@@ -172,8 +204,42 @@ end
 // ACCUMULATOR CONTROL OUTPUTS
 // =============================================================================
 
-assign acc_wr_en = (current_state == SYS_COMPUTE) || (current_state == SYS_WAIT);
-assign acc_wr_addr = sys_acc_addr;
+// Pipeline latency for 3x3 array: ~4 cycles
+localparam PIPELINE_LATENCY = 4;
+logic acc_wr_en_valid;
+assign acc_wr_en_valid = (current_state == SYS_COMPUTE) && (compute_counter >= PIPELINE_LATENCY);
+
+// Write address: start at sys_acc_addr, increment for each column write
+// For 3x3 MATMUL: Write 3 results (acc0, acc1, acc2) at consecutive addresses
+logic [7:0] acc_wr_addr_reg;
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        acc_wr_addr_reg <= 8'h00;
+    end else if (current_state == SYS_IDLE && sys_start) begin
+        acc_wr_addr_reg <= sys_acc_addr;  // Initialize to base address
+    end else if (acc_wr_en_valid) begin
+        // Increment address after writing each column (3 writes total for 3x3)
+        acc_wr_addr_reg <= acc_wr_addr_reg + 1'b1;
+    end
+end
+
+// Write enable: active when valid data is available
+assign acc_wr_en = acc_wr_en_valid;
+
+// Write address: use incremented address
+assign acc_wr_addr = acc_wr_addr_reg;
+
+// Column selection: Write each column result in sequence
+// For 3x3 MATMUL: Write acc0 (addr), acc1 (addr+1), acc2 (addr+2)
+// Use address offset to determine which column
+logic [7:0] acc_wr_addr_offset;
+assign acc_wr_addr_offset = acc_wr_addr_reg - sys_acc_addr;
+
+// Column selection signals based on address offset
+// Offset 0: acc0, Offset 1: acc1, Offset 2: acc2
+assign acc_wr_col01 = acc_wr_en_valid && (acc_wr_addr_offset[1:0] != 2'd2);
+assign acc_wr_col2 = acc_wr_en_valid && (acc_wr_addr_offset[1:0] == 2'd2);
+
 assign acc_clear = sys_acc_clear && (current_state == SYS_IDLE);
 
 // =============================================================================

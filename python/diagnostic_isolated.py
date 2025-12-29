@@ -78,7 +78,9 @@ class TPUDebug:
     def write_instruction(self, addr, instr):
         """Write 32-bit instruction"""
         self.ser.reset_input_buffer()
-        self.send_cmd(Cmd.WRITE_INSTR, 0, addr, 0, 4)
+        # CRITICAL FIX: WRITE_INSTR expects only 3 header bytes (cmd, addr_hi, addr_lo)
+        # NOT 5 bytes like other commands - no length bytes for fixed-size instruction
+        self.ser.write(bytes([Cmd.WRITE_INSTR, 0, addr]))  # Only 3 bytes!
         self.ser.write(instr.to_bytes(4, 'big'))
         time.sleep(0.05)
         return True

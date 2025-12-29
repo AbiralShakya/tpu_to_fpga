@@ -17,6 +17,7 @@ module dual_weight_fifo (
     input  logic [7:0] data_in_col2,   // Weight for column 2 PEs
     // Pop interface (MMU loads weights with column staggering)
     input  logic       pop,
+    input  logic       weight_load_start,  // Asserted when new weight loading sequence begins
     output logic [7:0] col0_out,       // Direct output (combinational, no skew)
     output logic [7:0] col1_out,       // Skewed output (1-cycle delay for wavefront)
     output logic [7:0] col2_out,       // Double-skewed output (2-cycle delay)
@@ -35,7 +36,7 @@ module dual_weight_fifo (
     logic [1:0] wr_ptr1, rd_ptr1;
     logic [1:0] wr_ptr2, rd_ptr2;
 
-    // Column 0: Combinational read (no skew, no latency)
+    // Column 0: Direct output (no delay - first to arrive)
     assign col0_out = queue0[rd_ptr0];
 
     // Column 1: Raw value (pre-skew) and skewed output
@@ -44,8 +45,15 @@ module dual_weight_fifo (
     // Column 2: Raw value (pre-skew)
     assign col2_raw = queue2[rd_ptr2];
 
-    // Double-skew register for column 2 (2-cycle delay)
-    logic [7:0] col2_skew_reg;
+    // CRITICAL FIX: Column 1 and 2 need their own delay pipeline, NOT using FIFO read pointer
+    // The issue: rd_ptr advances every cycle, but we need values to flow through delay stages
+    logic [7:0] col1_delay_stage;  // 1-cycle delay for column 1
+    logic [7:0] col2_delay_stage1; // First delay stage for column 2
+    logic [7:0] col2_delay_stage2; // Second delay stage for column 2
+    
+    // Track pop count to handle initial delay correctly
+    logic col1_pop_done;  // True after first pop for column 1
+    logic [1:0] col2_pop_count;  // Count pops for column 2 (0, 1, 2+)
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -55,9 +63,13 @@ module dual_weight_fifo (
             rd_ptr1 <= 2'd0;
             wr_ptr2 <= 2'd0;
             rd_ptr2 <= 2'd0;
+            col1_delay_stage <= 8'd0;
             col1_out <= 8'd0;
-            col2_skew_reg <= 8'd0;
+            col2_delay_stage1 <= 8'd0;
+            col2_delay_stage2 <= 8'd0;
             col2_out <= 8'd0;
+            col1_pop_done <= 1'b0;
+            col2_pop_count <= 2'd0;
             // Initialize queues
             for (int i = 0; i < 4; i++) begin
                 queue0[i] <= 8'd0;
@@ -65,7 +77,13 @@ module dual_weight_fifo (
                 queue2[i] <= 8'd0;
             end
         end else begin
-            // Column 0: Push and Pop (no skew)
+            // Reset pop counters when new weight loading sequence starts
+            if (weight_load_start) begin
+                col1_pop_done <= 1'b0;
+                col2_pop_count <= 2'd0;
+            end
+            
+            // Column 0: Push and Pop (no delay)
             if (push_col0) begin
                 queue0[wr_ptr0] <= data_in_col0;  // Use column 0 data
                 wr_ptr0 <= wr_ptr0 + 1'd1;
@@ -80,8 +98,17 @@ module dual_weight_fifo (
                 wr_ptr1 <= wr_ptr1 + 1'd1;
             end
             if (pop) begin
-                // Output current queue value (1-cycle delayed)
-                col1_out <= queue1[rd_ptr1];
+                // CRITICAL FIX: First pop outputs immediately, subsequent pops use delay
+                if (!col1_pop_done) begin
+                    // First pop: output immediately, initialize delay stage
+                    col1_out <= queue1[rd_ptr1];
+                    col1_delay_stage <= queue1[rd_ptr1];
+                    col1_pop_done <= 1'b1;
+                end else begin
+                    // Subsequent pops: use 1-cycle delay pipeline
+                    col1_out <= col1_delay_stage;          // Output previous value
+                    col1_delay_stage <= queue1[rd_ptr1];  // Load new value
+                end
                 rd_ptr1 <= rd_ptr1 + 1'd1;
             end
 
@@ -91,10 +118,24 @@ module dual_weight_fifo (
                 wr_ptr2 <= wr_ptr2 + 1'd1;
             end
             if (pop) begin
-                // First cycle: load raw value into skew register
-                col2_skew_reg <= col2_raw;
-                // Second cycle: output from skew register (2-cycle total delay)
-                col2_out <= col2_skew_reg;
+                // CRITICAL FIX: Handle 2-cycle delay with proper initialization
+                if (col2_pop_count == 2'd0) begin
+                    // First pop: output immediately, initialize first delay stage
+                    col2_out <= queue2[rd_ptr2];
+                    col2_delay_stage1 <= queue2[rd_ptr2];
+                    col2_pop_count <= 2'd1;
+                end else if (col2_pop_count == 2'd1) begin
+                    // Second pop: output from first delay stage, initialize second
+                    col2_out <= col2_delay_stage1;
+                    col2_delay_stage2 <= col2_delay_stage1;
+                    col2_delay_stage1 <= queue2[rd_ptr2];
+                    col2_pop_count <= 2'd2;
+                end else begin
+                    // Subsequent pops: use full 2-cycle delay pipeline
+                    col2_out <= col2_delay_stage2;          // Output from 2 cycles ago
+                    col2_delay_stage2 <= col2_delay_stage1; // Shift stage2
+                    col2_delay_stage1 <= queue2[rd_ptr2];   // Shift stage1
+                end
                 rd_ptr2 <= rd_ptr2 + 1'd1;
             end
         end

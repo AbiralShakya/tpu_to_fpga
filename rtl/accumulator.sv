@@ -18,8 +18,9 @@ module accumulator (
 // =============================================================================
 
 // Two buffers of 256 entries each (8-bit address), 64-bit data each
-logic [63:0] buffer0 [0:255];
-logic [63:0] buffer1 [0:255];
+// CRITICAL: ram_style = "block" forces BRAM inference (prevents flip-flop synthesis)
+(* ram_style = "block" *) logic [63:0] buffer0 [0:255];
+(* ram_style = "block" *) logic [63:0] buffer1 [0:255];
 
 // Register buffer selection to prevent glitches during read operations
 // This ensures atomic operations - once a read starts, it completes on the same buffer
@@ -45,7 +46,9 @@ always_ff @(posedge clk) begin
     end
 end
 
-// Read operation (synchronous with registered buffer selection to prevent glitches)
+// Read operation (synchronous with registered buffer selection)
+// BRAMs in FPGAs are typically registered, so we use synchronous read
+// VPU valid signal is delayed by 1 cycle to match this registered output
 always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         rd_data <= 64'h0;

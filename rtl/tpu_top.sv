@@ -43,7 +43,14 @@ module tpu_top (
     output logic [15:0] uart_debug_byte_count,
 
     // Bank selection debug (active during ISA execution)
-    output logic [7:0]  debug_bank_state
+    output logic [7:0]  debug_bank_state,
+
+    // Mux debug signals (to diagnose ST_UB write failure)
+    output logic        debug_use_test_interface,
+    output logic        debug_ctrl_ub_wr_en,
+    output logic        debug_test_ub_wr_en,
+    output logic        debug_test_instr_wr_en,
+    output logic        debug_final_ub_wr_en
 );
 
 // =============================================================================
@@ -358,7 +365,20 @@ basys3_test_interface test_interface (
     .vpu_busy           (vpu_busy),
     .vpu_done           (vpu_done),
     .ub_busy            (ub_busy),         // From datapath
-    .ub_done            (ub_done)          // From datapath
+    .ub_done            (ub_done),         // From datapath
+
+    // MATMUL DEBUG INPUTS (from datapath)
+    .debug_col0_wt           (debug_col0_wt),
+    .debug_col1_wt           (debug_col1_wt),
+    .debug_col2_wt           (debug_col2_wt),
+    .debug_row0_act_latched  (debug_row0_act_latched),
+    .debug_row1_act_latched  (debug_row1_act_latched),
+    .debug_row2_act_latched  (debug_row2_act_latched),
+    .debug_systolic_active   (debug_systolic_active),
+    .debug_en_weight_pass    (debug_en_weight_pass),
+    .debug_acc0_latched      (debug_acc0_latched),
+    .debug_acc1_latched      (debug_acc1_latched),
+    .debug_acc2_latched      (debug_acc2_latched)
 );
 
 // =============================================================================
@@ -421,7 +441,20 @@ tpu_datapath datapath (
     .dma_done       (),  // Not used
     .wt_busy        (wt_busy),
     .ub_busy        (ub_busy),  // Unified buffer busy
-    .ub_done        (ub_done)   // Unified buffer done (for UART status)
+    .ub_done        (ub_done),   // Unified buffer done (for UART status)
+
+    // DEBUG OUTPUTS - connected to top-level ports
+    .debug_col0_wt           (debug_col0_wt),
+    .debug_col1_wt           (debug_col1_wt),
+    .debug_col2_wt           (debug_col2_wt),
+    .debug_row0_act_latched  (debug_row0_act_latched),
+    .debug_row1_act_latched  (debug_row1_act_latched),
+    .debug_row2_act_latched  (debug_row2_act_latched),
+    .debug_systolic_active   (debug_systolic_active),
+    .debug_en_weight_pass    (debug_en_weight_pass),
+    .debug_acc0_latched      (debug_acc0_latched),
+    .debug_acc1_latched      (debug_acc1_latched),
+    .debug_acc2_latched      (debug_acc2_latched)
 );
 
 // =============================================================================
@@ -430,18 +463,28 @@ tpu_datapath datapath (
 
 // Multiplex between TEST INTERFACE and CONTROLLER
 // TEST INTERFACE takes priority when active (for programming)
+// CRITICAL FIX: Separate mux control for UB vs instruction/weight writes
+// This prevents instruction writes from blocking UB writes during ISA execution
 logic use_test_interface;
+logic use_test_interface_ub;  // NEW: Separate control for UB operations only
+
+// Original signal (used for DMA busy and general test interface detection)
 assign use_test_interface = test_ub_wr_en | test_ub_rd_en | test_wt_wr_en | test_instr_wr_en;
+
+// NEW: UB mux control - ONLY depends on UB read/write enables
+// This allows controller to write to UB even when test_instr_wr_en is high
+assign use_test_interface_ub = test_ub_wr_en | test_ub_rd_en;
 
 // Unified Buffer connections (TEST INTERFACE takes priority for programming, otherwise CONTROLLER)
 // When controller writes (ST_UB instruction), use accumulator output; when UART writes, use test data
-assign ub_wr_data = use_test_interface ? test_ub_wr_data : acc_data_out;
-assign ub_wr_en = use_test_interface ? test_ub_wr_en : ctrl_ub_wr_en;
-assign ub_rd_en = use_test_interface ? test_ub_rd_en : ctrl_ub_rd_en;
-assign ub_wr_addr = use_test_interface ? {1'b0, test_ub_wr_addr[7:0]} : ctrl_ub_wr_addr;  // UART always uses bank 0
-assign ub_rd_addr = use_test_interface ? {1'b0, test_ub_rd_addr[7:0]} : ctrl_ub_rd_addr;  // UART always uses bank 0
-assign ub_wr_count = use_test_interface ? test_ub_wr_count : ctrl_ub_wr_count;
-assign ub_rd_count = use_test_interface ? test_ub_rd_count : ctrl_ub_rd_count;
+// CRITICAL FIX: Use use_test_interface_ub instead of use_test_interface
+assign ub_wr_data = use_test_interface_ub ? test_ub_wr_data : acc_data_out;
+assign ub_wr_en = use_test_interface_ub ? test_ub_wr_en : ctrl_ub_wr_en;
+assign ub_rd_en = use_test_interface_ub ? test_ub_rd_en : ctrl_ub_rd_en;
+assign ub_wr_addr = use_test_interface_ub ? {1'b0, test_ub_wr_addr[7:0]} : ctrl_ub_wr_addr;  // UART always uses bank 0
+assign ub_rd_addr = use_test_interface_ub ? {1'b0, test_ub_rd_addr[7:0]} : ctrl_ub_rd_addr;  // UART always uses bank 0
+assign ub_wr_count = use_test_interface_ub ? test_ub_wr_count : ctrl_ub_wr_count;
+assign ub_rd_count = use_test_interface_ub ? test_ub_rd_count : ctrl_ub_rd_count;
 
 // Weight FIFO data (from TEST INTERFACE or legacy DMA)
 // Weight data comes from weight memory during RD_WEIGHT execution
@@ -478,7 +521,7 @@ assign pipeline_stage = current_stage;
 assign hazard_detected = pipeline_stall;
 
 // Bank selection debug signal:
-// [7]   = use_test_interface (1 = UART controls UB, 0 = controller controls UB)
+// [7]   = use_test_interface_ub (1 = UART controls UB, 0 = controller controls UB) - UPDATED
 // [6]   = ub_rd_addr[8] (read bank selection via address bit)
 // [5]   = ub_wr_addr[8] (write bank selection via address bit)
 // [4]   = ub_busy (unified buffer busy flag)
@@ -488,7 +531,7 @@ assign hazard_detected = pipeline_stall;
 // [0]   = test_ub_wr_en (UART write enable)
 // Note: UART always uses bank 0, controller uses ctrl_ub_buf_sel in address bit 8
 assign debug_bank_state = {
-    use_test_interface,
+    use_test_interface_ub,  // UPDATED: use UB-specific mux signal
     ub_rd_addr[8],
     ub_wr_addr[8],
     ub_busy,
@@ -503,5 +546,13 @@ assign debug_bank_state = {
 assign uart_debug_state = 8'h00;
 assign uart_debug_cmd = 8'h00;
 assign uart_debug_byte_count = 16'h0000;
+
+// Mux debug signals for ST_UB write failure diagnosis
+// These signals help identify why ctrl_ub_wr_en isn't reaching the UB
+assign debug_use_test_interface = use_test_interface;      // Original (includes all test signals)
+assign debug_ctrl_ub_wr_en = ctrl_ub_wr_en;                // Controller's UB write enable
+assign debug_test_ub_wr_en = test_ub_wr_en;                // Test interface UB write enable
+assign debug_test_instr_wr_en = test_instr_wr_en;          // Test interface instruction write
+assign debug_final_ub_wr_en = ub_wr_en;                    // Final muxed UB write enable
 
 endmodule

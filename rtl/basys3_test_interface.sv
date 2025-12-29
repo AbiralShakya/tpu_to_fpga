@@ -47,7 +47,20 @@ module basys3_test_interface (
     input  logic        vpu_busy,
     input  logic        vpu_done,
     input  logic        ub_busy,
-    input  logic        ub_done
+    input  logic        ub_done,
+
+    // MATMUL DEBUG INPUTS (from datapath)
+    input  logic [7:0]  debug_col0_wt,
+    input  logic [7:0]  debug_col1_wt,
+    input  logic [7:0]  debug_col2_wt,
+    input  logic [7:0]  debug_row0_act_latched,
+    input  logic [7:0]  debug_row1_act_latched,
+    input  logic [7:0]  debug_row2_act_latched,
+    input  logic        debug_systolic_active,
+    input  logic        debug_en_weight_pass,
+    input  logic [31:0] debug_acc0_latched,
+    input  logic [31:0] debug_acc1_latched,
+    input  logic [31:0] debug_acc2_latched
 );
 
 // ============================================================================
@@ -259,12 +272,34 @@ always_comb begin
     // LED[11:8] = RX count
     // LED[7:4] = UART state machine state (10 = SEND_STATUS = 0xA)
     // LED[3:0] = TX count low nibble (should increment when sending)
-    led = {
-        uart_debug_framing_error_count[3:0],  // LED[15:12] - Framing errors
-        uart_debug_rx_count[3:0],             // LED[11:8] - Valid RX count
-        uart_debug_state[3:0],                // LED[7:4] - UART state (0xA = SEND_STATUS)
-        uart_debug_tx_count[3:0]             // LED[3:0] - TX count (should increment)
-    };
+    // LED Display Mode Selection (use sw[15] to select mode)
+    // sw[15] = 0: UART Debug Mode
+    // sw[15] = 1: MATMUL Debug Mode
+    if (sw[15]) begin
+        // MATMUL DEBUG MODE
+        // LED[15:12] = Weights: col2_wt[3:0], col1_wt[3:0]
+        // LED[11:8]  = Weights: col0_wt[3:0], debug_systolic_active, debug_en_weight_pass, 1'b0
+        // LED[7:4]   = Activations: row2_act[3:0], row1_act[3:0]
+        // LED[3:0]   = Activations: row0_act[3:0]
+        led = {
+            debug_col2_wt[3:0], debug_col1_wt[3:0],      // LED[15:12] - Weights col2[3:0], col1[3:0]
+            debug_col0_wt[3:0], debug_systolic_active, debug_en_weight_pass, 1'b0, // LED[11:8] - Weights col0[3:0], systolic_active, weight_pass, padding
+            debug_row2_act_latched[3:0], debug_row1_act_latched[3:0],  // LED[7:4] - Activations row2[3:0], row1[3:0]
+            debug_row0_act_latched[3:0]                               // LED[3:0] - Activations row0[3:0]
+        };
+    end else begin
+        // UART DEBUG MODE (original)
+        // LED[15:12] = Framing errors
+        // LED[11:8] = RX count
+        // LED[7:4] = UART state machine state (10 = SEND_STATUS = 0xA)
+        // LED[3:0] = TX count low nibble (should increment when sending)
+        led = {
+            uart_debug_framing_error_count[3:0],  // LED[15:12] - Framing errors
+            uart_debug_rx_count[3:0],             // LED[11:8] - Valid RX count
+            uart_debug_state[3:0],                // LED[7:4] - UART state (0xA = SEND_STATUS)
+            uart_debug_tx_count[3:0]             // LED[3:0] - TX count (should increment)
+        };
+    end
     
     // #region agent log - Additional diagnostic: show full last byte on 7-seg display
     // We can use the 7-segment display to show the full byte value
