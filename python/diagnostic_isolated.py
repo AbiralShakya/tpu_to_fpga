@@ -86,11 +86,15 @@ class TPUDebug:
     def execute(self, timeout=2.0):
         """Execute program and wait for completion"""
         self.ser.reset_input_buffer()
-        self.send_cmd(Cmd.EXECUTE, 0, 0, 0, 0)
+        # EXECUTE command only needs command byte - extra bytes cause buffer pollution
+        self.ser.write(bytes([Cmd.EXECUTE]))
         time.sleep(0.05)
         start = time.time()
         while time.time() - start < timeout:
-            self.send_cmd(Cmd.READ_STATUS, 0, 0, 0, 0)
+            self.ser.reset_input_buffer()  # Clear any pending bytes
+            # READ_STATUS only needs command byte
+            self.ser.write(bytes([Cmd.READ_STATUS]))
+            time.sleep(0.005)  # Give FPGA time to respond
             status = self.ser.read(1)
             if status and (status[0] & 0x01) == 0:  # Not busy
                 return True

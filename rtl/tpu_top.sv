@@ -98,14 +98,17 @@ logic [3:0]  vpu_mode;
 logic [15:0] vpu_param;
 
 // =============================================================================
-// DATAPATH STATUS TO CONTROLLER (4 signals)
+// DATAPATH STATUS TO CONTROLLER (8 signals)
 // =============================================================================
 
 logic        sys_busy;
+logic        sys_done;   // Systolic array done
 logic        vpu_busy;
+logic        vpu_done;   // VPU done
 logic        dma_busy;
 logic        wt_busy;
-logic        ub_busy;  // Unified buffer busy
+logic        ub_busy;    // Unified buffer busy
+logic        ub_done;    // Unified buffer done
 
 // =============================================================================
 // DATAPATH DATA INTERFACES
