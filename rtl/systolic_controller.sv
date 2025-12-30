@@ -102,9 +102,13 @@ always_comb begin
         end
 
         SYS_LOAD_WEIGHTS: begin
-            // 5-cycle diagonal wavefront weight loading (3x3 array with staggered timing)
-            // CRITICAL: Counter starts at 1 on first cycle (set in always_ff), so check for >= 5
-            if (weight_load_counter >= 5) begin
+            // 7-cycle weight loading (3x3 array with psum register delay compensation)
+            // Each row hop through psum adds 1 cycle delay, so:
+            // - Row 0 PEs capture with column FIFO delays only (0, 1, 2 cycles)
+            // - Row 1 PEs need +2 cycles (1 for psum hop + 1 for FIFO to advance)
+            // - Row 2 PEs need +2 more cycles
+            // Total: 7 cycles to capture all 9 PE weights correctly
+            if (weight_load_counter >= 7) begin
                 next_state = SYS_COMPUTE;
             end
         end
@@ -174,13 +178,25 @@ end
 // Weight loading timing (3-cycle diagonal wavefront)
 assign en_weight_pass = (current_state == SYS_LOAD_WEIGHTS);
 
-// Staggered row+column capture for diagonal wavefront (3x3 array)
-// Timing accounts for registered pass-through delay: 1 cycle per row
-// Cycle 1: Row 0, Column 0 (pe00) - sees col0_in directly
-// Cycle 2: Row 0, Column 1 (pe01) AND Row 1, Column 0 (pe10) - pe10 sees pe00's output (1 cycle delay)
-// Cycle 3: Row 0, Column 2 (pe02) AND Row 1, Column 1 (pe11) AND Row 2, Column 0 (pe20) - pe20 sees pe10's output (2 cycle delay)
-// Cycle 4: Row 1, Column 2 (pe12) AND Row 2, Column 1 (pe21)
-// Cycle 5: Row 2, Column 2 (pe22)
+// CORRECTED weight capture timing for 3x3 systolic array
+// 
+// Key insight: Each row's psum_out is REGISTERED (1-cycle delay), and the weight FIFO
+// outputs W[0,j], W[1,j], W[2,j] on cycles 1, 2, 3 respectively for each column.
+// Additionally, column FIFOs have staggered delays: col0=0, col1=1, col2=2 cycles.
+//
+// For a PE to capture the correct weight via psum, we must account for:
+// 1. Column FIFO delay (0, 1, or 2 cycles)
+// 2. Psum register delay (1 cycle per row hop from top)
+//
+// Corrected timing:
+// - Cycle 1: pe00 (row0,col0) - direct from col0, no delay
+// - Cycle 2: pe01 (row0,col1) - col1 has 1-cycle FIFO delay, arrives cycle 2
+// - Cycle 3: pe10 (row1,col0), pe02 (row0,col2) - pe10 needs psum from cycle 2; pe02 needs col2 with 2-cycle delay
+// - Cycle 4: pe11 (row1,col1) - needs pe01.psum from cycle 3
+// - Cycle 5: pe20 (row2,col0), pe12 (row1,col2) - pe20 needs 2 psum hops; pe12 needs pe02.psum
+// - Cycle 6: pe21 (row2,col1) - needs 2 psum hops from col1
+// - Cycle 7: pe22 (row2,col2) - needs 2 psum hops from col2
+//
 always_comb begin
     // Default all to 0
     en_capture_row0_col0 = 1'b0;
@@ -194,23 +210,27 @@ always_comb begin
     en_capture_row2_col2 = 1'b0;
     
     case (weight_load_counter)
-        8'h01: begin  // Cycle 1: Row 0, Column 0
+        8'h01: begin  // Cycle 1: pe00 only
             en_capture_row0_col0 = 1'b1;
         end
-        8'h02: begin  // Cycle 2: Row 0, Column 1 AND Row 1, Column 0
+        8'h02: begin  // Cycle 2: pe01
             en_capture_row0_col1 = 1'b1;
+        end
+        8'h03: begin  // Cycle 3: pe10, pe02
             en_capture_row1_col0 = 1'b1;
-        end
-        8'h03: begin  // Cycle 3: Row 0, Column 2 AND Row 1, Column 1 AND Row 2, Column 0
             en_capture_row0_col2 = 1'b1;
-            en_capture_row1_col1 = 1'b1;
-            en_capture_row2_col0 = 1'b1;
         end
-        8'h04: begin  // Cycle 4: Row 1, Column 2 AND Row 2, Column 1
+        8'h04: begin  // Cycle 4: pe11
+            en_capture_row1_col1 = 1'b1;
+        end
+        8'h05: begin  // Cycle 5: pe20, pe12
+            en_capture_row2_col0 = 1'b1;
             en_capture_row1_col2 = 1'b1;
+        end
+        8'h06: begin  // Cycle 6: pe21
             en_capture_row2_col1 = 1'b1;
         end
-        8'h05: begin  // Cycle 5: Row 2, Column 2
+        8'h07: begin  // Cycle 7: pe22
             en_capture_row2_col2 = 1'b1;
         end
         default: ; // All already 0

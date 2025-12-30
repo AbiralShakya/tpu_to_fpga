@@ -302,6 +302,109 @@ class EliteTPUTester:
         except Exception as e:
             return TestResult("UB_Double_Buffering", False, "No exception", str(e), f"Exception: {e}")
 
+    def test_all_zeros_weights(self) -> TestResult:
+        """DIAGNOSTIC: Test with all-zero weights - should return [0, 0, 0]"""
+        try:
+            self.write_ub(0, bytes([0] * 32))
+            self.write_ub(10, bytes([0] * 32))
+
+            # All zero weights
+            for i in range(3):
+                self.write_wt(i, bytes([0] * 32))
+
+            activations = [10, 20, 30]
+            self.write_ub(0, bytes(activations + [0] * 29))
+
+            program = [
+                self.encode_instruction(Opcode.RD_WEIGHT.value, 0, 1),
+                self.encode_instruction(Opcode.RD_WEIGHT.value, 1, 1),
+                self.encode_instruction(Opcode.RD_WEIGHT.value, 2, 1),
+                self.encode_instruction(Opcode.LD_UB.value, 0, 3),
+                self.encode_instruction(Opcode.MATMUL.value, 0, 0, 3, 0),
+                self.encode_instruction(Opcode.ST_UB.value, 10, 3),
+                self.encode_instruction(Opcode.HALT.value)
+            ]
+
+            for addr, instr in enumerate(program):
+                self.write_instr(addr, instr)
+
+            self.start_execution()
+            self.wait_execution_complete(5.0)
+
+            results = self.read_ub(10, 32)
+            result_bytes = results[:3]
+            expected = [0, 0, 0]  # All zero weights = all zero output
+            passed = result_bytes == expected
+
+            return TestResult("DIAG_AllZeroWeights", passed, expected, result_bytes,
+                            f"All-zero weights: if not [0,0,0], MATMUL/ST_UB path is broken")
+
+        except Exception as e:
+            return TestResult("DIAG_AllZeroWeights", False, "No exception", str(e), f"Exception: {e}")
+
+    def test_all_ones_weights(self) -> TestResult:
+        """DIAGNOSTIC: Test with all-one weights - should return [60, 60, 60]"""
+        try:
+            self.write_ub(0, bytes([0] * 32))
+            self.write_ub(10, bytes([0] * 32))
+
+            # All one weights (1 in first 3 positions of each row)
+            for i in range(3):
+                row = [1, 1, 1, 0, 0, 0, 0, 0]
+                self.write_wt(i, bytes(row + [0] * 24))
+
+            activations = [10, 20, 30]
+            self.write_ub(0, bytes(activations + [0] * 29))
+
+            program = [
+                self.encode_instruction(Opcode.RD_WEIGHT.value, 0, 1),
+                self.encode_instruction(Opcode.RD_WEIGHT.value, 1, 1),
+                self.encode_instruction(Opcode.RD_WEIGHT.value, 2, 1),
+                self.encode_instruction(Opcode.LD_UB.value, 0, 3),
+                self.encode_instruction(Opcode.MATMUL.value, 0, 0, 3, 0),
+                self.encode_instruction(Opcode.ST_UB.value, 10, 3),
+                self.encode_instruction(Opcode.HALT.value)
+            ]
+
+            for addr, instr in enumerate(program):
+                self.write_instr(addr, instr)
+
+            self.start_execution()
+            self.wait_execution_complete(5.0)
+
+            results = self.read_ub(10, 32)
+            result_bytes = results[:3]
+            # 10*1 + 20*1 + 30*1 = 60 for all columns
+            expected = [60, 60, 60]
+            passed = result_bytes == expected
+
+            return TestResult("DIAG_AllOneWeights", passed, expected, result_bytes,
+                            f"All-one weights: 10+20+30=60 expected per column")
+
+        except Exception as e:
+            return TestResult("DIAG_AllOneWeights", False, "No exception", str(e), f"Exception: {e}")
+
+    def test_ub_read_after_clear(self) -> TestResult:
+        """DIAGNOSTIC: Verify UB[10] is actually cleared and readable"""
+        try:
+            # Write known pattern, then clear, then verify
+            self.write_ub(10, bytes([0xAB] * 32))
+            read1 = self.read_ub(10, 3)
+            
+            self.write_ub(10, bytes([0] * 32))
+            read2 = self.read_ub(10, 3)
+
+            pattern_ok = read1[:3] == [0xAB, 0xAB, 0xAB]
+            clear_ok = read2[:3] == [0, 0, 0]
+
+            return TestResult("DIAG_UB_Clear", pattern_ok and clear_ok,
+                            {"pattern": [0xAB]*3, "clear": [0]*3},
+                            {"pattern": read1[:3], "clear": read2[:3]},
+                            f"UB write/clear/read at addr 10")
+
+        except Exception as e:
+            return TestResult("DIAG_UB_Clear", False, "No exception", str(e), f"Exception: {e}")
+
     def test_matmul_identity(self) -> TestResult:
         """Test identity matrix multiplication"""
         try:
@@ -732,6 +835,14 @@ class EliteTPUTester:
         self.test_results.append(self.test_activation_loading())
         self.test_results.append(self.test_unified_buffer_double_buffering())
 
+        # DIAGNOSTIC tests (run first to isolate issues)
+        print("\n" + "=" * 70)
+        print("DIAGNOSTIC TESTS")
+        print("=" * 70)
+        self.test_results.append(self.test_ub_read_after_clear())
+        self.test_results.append(self.test_all_zeros_weights())
+        self.test_results.append(self.test_all_ones_weights())
+
         # MATMUL tests
         print("\n" + "=" * 70)
         print("MATMUL TESTS")
@@ -799,3 +910,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

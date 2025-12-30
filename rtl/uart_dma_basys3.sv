@@ -501,8 +501,9 @@ always @(posedge clk or negedge rst_n) begin
             WRITE_WT: begin
                 // CRITICAL: Must use edge detection to avoid processing same byte multiple times
                 if (rx_valid && !rx_valid_prev && !rx_framing_error) begin
-                    // Accumulate bytes into buffer
-                    wt_buffer <= {wt_buffer[55:0], rx_data};
+                    // Accumulate bytes into buffer - SHIFT RIGHT so byte0 ends up at LSB
+                    // This ensures wt_wr_data[7:0] = byte0, [15:8] = byte1, etc.
+                    wt_buffer <= {rx_data, wt_buffer[63:8]};
                     byte_index <= byte_index + 1;
                     byte_count <= byte_count + 1;
 
@@ -510,7 +511,7 @@ always @(posedge clk or negedge rst_n) begin
                     if (byte_index == 5'd7) begin
                         wt_wr_en <= 1'b1;
                         wt_wr_addr <= {addr_hi[1:0], addr_lo};
-                        wt_wr_data <= {wt_buffer[55:0], rx_data};
+                        wt_wr_data <= {rx_data, wt_buffer[63:8]};
 
                         addr_lo <= addr_lo + 1;
                         if (addr_lo == 8'hFF) addr_hi <= addr_hi + 1;
@@ -528,7 +529,7 @@ always @(posedge clk or negedge rst_n) begin
                         // Partial write (less than 8 bytes total)
                         wt_wr_en <= 1'b1;
                         wt_wr_addr <= {addr_hi[1:0], addr_lo};
-                        wt_wr_data <= {wt_buffer[55:0], rx_data};
+                        wt_wr_data <= {rx_data, wt_buffer[63:8]};
 
                         // Send ACK
                         if (tx_ready) begin
