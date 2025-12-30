@@ -295,10 +295,12 @@ assign q_inv_scale = 16'h0100;   // Scale = 1.0 (Q8.8)
 assign q_zero_point = 8'sd0;     // Zero point = 0
 
 // Extract individual accumulator outputs for pipelines
+// NOTE: Accumulator stores columns sequentially (one per address), not packed
+// So when reading address N+2, column 2 data appears in acc_rd_data[31:0]
 logic signed [31:0] acc_col0, acc_col1, acc_col2;
-assign acc_col0 = acc_rd_data[31:0];    // Column 0
-assign acc_col1 = acc_rd_data[63:32];   // Column 1
-assign acc_col2 = 32'b0;                // Column 2 not stored (for now)
+assign acc_col0 = acc_rd_data[31:0];    // Column 0 (when reading address N)
+assign acc_col1 = acc_rd_data[31:0];    // Column 1 (when reading address N+1)
+assign acc_col2 = acc_rd_data[31:0];    // Column 2 (when reading address N+2) - FIXED from 32'b0
 
 // Delay valid signal by 1 cycle to match accumulator's registered read output
 // Accumulator read is synchronous: when acc_rd_en is asserted, data appears on next cycle

@@ -88,6 +88,10 @@ logic rx_valid;
 logic rx_ready;
 logic rx_framing_error;
 
+// CRITICAL FIX: Drive rx_ready high to allow UART RX to accept bytes continuously
+// Without this, the UART RX module hangs after the first byte, waiting for acknowledgment
+assign rx_ready = 1'b1;
+
 uart_rx_improved #(
     .CLOCK_FREQ(CLOCK_FREQ),
     .BAUD_RATE(BAUD_RATE)
@@ -308,7 +312,8 @@ always @(posedge clk or negedge rst_n) begin
             // READ_ADDR_HI: Read high byte of address
             // ================================================================
             READ_ADDR_HI: begin
-                if (rx_valid && !rx_framing_error) begin
+                // CRITICAL: Must use edge detection to avoid processing same byte multiple times
+                if (rx_valid && !rx_valid_prev && !rx_framing_error) begin
                     addr_hi <= rx_data;
                     state <= READ_ADDR_LO;
                 end
@@ -318,7 +323,8 @@ always @(posedge clk or negedge rst_n) begin
             // READ_ADDR_LO: Read low byte of address
             // ================================================================
             READ_ADDR_LO: begin
-                if (rx_valid && !rx_framing_error) begin
+                // CRITICAL: Must use edge detection to avoid processing same byte multiple times
+                if (rx_valid && !rx_valid_prev && !rx_framing_error) begin
                     addr_lo <= rx_data;
 
                     case (command)
@@ -335,14 +341,16 @@ always @(posedge clk or negedge rst_n) begin
             // READ_LENGTH_HI/LO: Read transfer length
             // ================================================================
             READ_LENGTH_HI: begin
-                if (rx_valid && !rx_framing_error) begin
+                // CRITICAL: Must use edge detection to avoid processing same byte multiple times
+                if (rx_valid && !rx_valid_prev && !rx_framing_error) begin
                     length[15:8] <= rx_data;
                     state <= READ_LENGTH_LO;
                 end
             end
 
             READ_LENGTH_LO: begin
-                if (rx_valid && !rx_framing_error) begin
+                // CRITICAL: Must use edge detection to avoid processing same byte multiple times
+                if (rx_valid && !rx_valid_prev && !rx_framing_error) begin
                     length[7:0] <= rx_data;
 
                     case (command)
@@ -374,7 +382,8 @@ always @(posedge clk or negedge rst_n) begin
                 debug_ub_buffer_lsb <= ub_buffer[7:0];
                 debug_ub_buffer_msb <= ub_buffer[255:248];
 
-                if (rx_valid && !rx_framing_error) begin
+                // CRITICAL: Must use edge detection to avoid processing same byte multiple times
+                if (rx_valid && !rx_valid_prev && !rx_framing_error) begin
                     // Accumulate bytes into buffer (newest byte goes to MSB position)
                     // After shift: [255:248] = newest byte, [247:240] = previous, etc.
                     ub_buffer <= {rx_data, ub_buffer[255:8]};
@@ -402,7 +411,7 @@ always @(posedge clk or negedge rst_n) begin
                             ub_buffer[135:128],  ub_buffer[127:120], ub_buffer[119:112], ub_buffer[111:104], // byte15,14,13,12 -> [127:96]
                             ub_buffer[103:96],   ub_buffer[95:88],   ub_buffer[87:80],   ub_buffer[79:72],   // byte11,10,9,8 -> [95:64]
                             ub_buffer[71:64],    ub_buffer[63:56],   ub_buffer[55:48],   ub_buffer[47:40],   // byte7,6,5,4 -> [63:32]
-                            ub_buffer[39:32],    ub_buffer[31:24],   ub_buffer[23:16],   ub_buffer[15:8]     // byte3,2,1,0 -> [31:0]
+                            ub_buffer[39:32],    ub_buffer[31:24],   ub_buffer[23:16],   ub_buffer[15:8]     // byte3,2,1,0 -> [31:0] CORRECTED: byte0 is at [15:8], not [7:0]
                         };
                         // CORRECTED last_ub_write_data: same ordering as ub_wr_data
                         last_ub_write_data <= {
@@ -413,7 +422,7 @@ always @(posedge clk or negedge rst_n) begin
                             ub_buffer[135:128],  ub_buffer[127:120], ub_buffer[119:112], ub_buffer[111:104],
                             ub_buffer[103:96],   ub_buffer[95:88],   ub_buffer[87:80],   ub_buffer[79:72],
                             ub_buffer[71:64],    ub_buffer[63:56],   ub_buffer[55:48],   ub_buffer[47:40],
-                            ub_buffer[39:32],    ub_buffer[31:24],   ub_buffer[23:16],   ub_buffer[15:8]
+                            ub_buffer[39:32],    ub_buffer[31:24],   ub_buffer[23:16],   ub_buffer[15:8]     // CORRECTED: byte0 is at [15:8], not [7:0]
                         };
                         last_ub_write_addr <= addr_lo;
 
@@ -490,7 +499,8 @@ always @(posedge clk or negedge rst_n) begin
             // WRITE_WT: Write data to Weight Memory (8 bytes at a time)
             // ================================================================
             WRITE_WT: begin
-                if (rx_valid && !rx_framing_error) begin
+                // CRITICAL: Must use edge detection to avoid processing same byte multiple times
+                if (rx_valid && !rx_valid_prev && !rx_framing_error) begin
                     // Accumulate bytes into buffer
                     wt_buffer <= {wt_buffer[55:0], rx_data};
                     byte_index <= byte_index + 1;
@@ -535,7 +545,8 @@ always @(posedge clk or negedge rst_n) begin
             // WRITE_INSTR: Write instruction (4 bytes)
             // ================================================================
             WRITE_INSTR: begin
-                if (rx_valid && !rx_framing_error) begin
+                // CRITICAL: Must use edge detection to avoid processing same byte multiple times
+                if (rx_valid && !rx_valid_prev && !rx_framing_error) begin
                     instr_buffer <= {instr_buffer[23:0], rx_data};
                     byte_count <= byte_count + 1;
 
