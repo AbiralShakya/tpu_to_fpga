@@ -10,6 +10,8 @@ module systolic_controller (
     input  logic [7:0]  sys_rows,         // Number of rows to process
     input  logic [7:0]  sys_acc_addr,    // Accumulator write address
     input  logic        sys_acc_clear,   // Clear accumulator before write
+    input  logic        acc_clear_busy,  // Accumulator clear in progress (256 cycles)
+    input  logic        acc_clear_complete, // Pulses high when clear finishes
 
     // Status outputs
     output logic        sys_busy,
@@ -36,7 +38,8 @@ module systolic_controller (
     output logic [7:0]  acc_wr_addr,      // Accumulator write address
     output logic        acc_wr_col01,     // Write acc0+acc1 (even addresses)
     output logic        acc_wr_col2,      // Write acc2 (odd addresses)
-    output logic        acc_clear         // Accumulator clear signal
+    output logic        acc_clear,        // Accumulator clear signal
+    output logic [7:0]  weight_load_cnt   // Weight loading counter (for FIFO pop gating)
 );
 
 // =============================================================================
@@ -45,10 +48,11 @@ module systolic_controller (
 
 typedef enum logic [2:0] {
     SYS_IDLE      = 3'b000,
-    SYS_LOAD_WEIGHTS = 3'b001,
-    SYS_COMPUTE   = 3'b010,
-    SYS_WAIT      = 3'b011,
-    SYS_DONE      = 3'b100
+    SYS_CLEAR     = 3'b001,  // Wait for accumulator clear (256 cycles)
+    SYS_LOAD_WEIGHTS = 3'b010,
+    SYS_COMPUTE   = 3'b011,
+    SYS_WAIT      = 3'b100,
+    SYS_DONE      = 3'b101
 } sys_state_t;
 
 sys_state_t current_state, next_state;
@@ -75,6 +79,23 @@ always_ff @(posedge clk or negedge rst_n) begin
     end
 end
 
+// CRITICAL FIX: Track if clear has actually started (busy went high)
+// This prevents the race condition where we exit SYS_CLEAR before clear begins
+logic clear_started;
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        clear_started <= 1'b0;
+    end else if (current_state == SYS_CLEAR) begin
+        // Latch when acc_clear_busy goes high (clear actually started)
+        if (acc_clear_busy) begin
+            clear_started <= 1'b1;
+        end
+    end else begin
+        // Reset when not in SYS_CLEAR
+        clear_started <= 1'b0;
+    end
+end
+
 // Pipeline latency constant (must be declared before use)
 localparam PIPELINE_LATENCY = 4;
 
@@ -97,6 +118,20 @@ always_comb begin
     case (current_state)
         SYS_IDLE: begin
             if (sys_start) begin
+                // If clear requested, go to SYS_CLEAR first, else go to LOAD_WEIGHTS
+                if (acc_clear_request) begin
+                    next_state = SYS_CLEAR;
+                end else begin
+                    next_state = SYS_LOAD_WEIGHTS;
+                end
+            end
+        end
+
+        SYS_CLEAR: begin
+            // Wait for sequential accumulator clear (256 cycles)
+            // Use acc_clear_complete pulse which fires when clear finishes
+            // This avoids race conditions with the registered busy signal
+            if (acc_clear_complete) begin
                 next_state = SYS_LOAD_WEIGHTS;
             end
         end
@@ -293,8 +328,9 @@ assign acc_wr_addr_offset = acc_wr_addr_reg - sys_acc_addr;
 assign acc_wr_col01 = acc_wr_en_valid && (acc_wr_addr_offset[1:0] != 2'd2);
 assign acc_wr_col2 = acc_wr_en_valid && (acc_wr_addr_offset[1:0] == 2'd2);
 
-// Clear accumulator during weight loading phase (before computation starts)
-assign acc_clear = acc_clear_request && (current_state == SYS_LOAD_WEIGHTS);
+// Clear accumulator during SYS_CLEAR state (sequential clear takes 256 cycles)
+// Stays high until acc_clear_busy goes low
+assign acc_clear = acc_clear_request && (current_state == SYS_CLEAR);
 
 // =============================================================================
 // STATUS OUTPUTS
@@ -303,5 +339,8 @@ assign acc_clear = acc_clear_request && (current_state == SYS_LOAD_WEIGHTS);
 assign sys_busy = (current_state != SYS_IDLE);
 assign sys_done = (current_state == SYS_DONE);
 assign systolic_active = (current_state == SYS_COMPUTE);
+
+// Export weight load counter for FIFO pop gating in datapath
+assign weight_load_cnt = weight_load_counter;
 
 endmodule

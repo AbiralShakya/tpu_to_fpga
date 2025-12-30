@@ -105,6 +105,8 @@ logic        sc_acc_clear;    // Accumulator clear from systolic controller
 // Accumulator connections
 logic [63:0] acc_wr_data;
 logic [63:0] acc_rd_data;
+logic        acc_clear_busy;     // High while accumulator clear is in progress (256 cycles)
+logic        acc_clear_complete; // Pulses high when clear finishes (for race-free handshaking)
 
 // VPU connections
 logic [255:0] vpu_out_data;
@@ -120,6 +122,7 @@ logic         wt_rd_en;
 logic         wt_rd_empty;
 logic         wt_wr_full;
 logic         wt_load_done;
+logic [7:0]   weight_load_counter;  // From systolic controller for FIFO pop gating
 
 // =============================================================================
 // SYSTOLIC CONTROLLER
@@ -133,6 +136,8 @@ systolic_controller systolic_ctrl (
     .sys_rows        (sys_rows),
     .sys_acc_addr    (sys_acc_addr),
     .sys_acc_clear   (sys_acc_clear),
+    .acc_clear_busy  (acc_clear_busy),     // Wait for sequential clear (256 cycles)
+    .acc_clear_complete (acc_clear_complete), // Pulses high when clear finishes
     .sys_busy        (sys_busy),
     .sys_done        (sys_done),
     .en_weight_pass  (en_weight_pass),
@@ -150,7 +155,8 @@ systolic_controller systolic_ctrl (
     .acc_wr_addr     (sc_acc_wr_addr),  // Use internal signal, not input port
     .acc_wr_col01    (sc_acc_wr_col01), // Column selection: acc0+acc1
     .acc_wr_col2     (sc_acc_wr_col2),  // Column selection: acc2
-    .acc_clear       (sc_acc_clear)     // Accumulator clear from systolic controller
+    .acc_clear       (sc_acc_clear),    // Accumulator clear from systolic controller
+    .weight_load_cnt (weight_load_counter) // Weight load counter for FIFO pop gating
 );
 
 // =============================================================================
@@ -194,7 +200,12 @@ end
 assign wf_push_col0 = wt_fifo_wr_delayed;
 assign wf_push_col1 = wt_fifo_wr_delayed;
 assign wf_push_col2 = wt_fifo_wr_delayed;
-assign wf_pop = wt_rd_en;
+
+// CRITICAL FIX: Pop FIFO for all 7 cycles of weight loading
+// The 2-cycle skew pipeline in col2 needs 5 pops (3 weights + 2 skew cycles)
+// So we pop for cycles 1-7 to allow the skew pipeline to flush
+// The FIFO internally limits actual pops to 3 weights per column
+assign wf_pop = wt_rd_en && (weight_load_counter >= 8'h01) && (weight_load_counter <= 8'h07);
 
 // Weight FIFO busy logic - busy when DRAM read is active or FIFO is loading
 assign wt_busy = wt_mem_rd_en || wt_fifo_wr;
@@ -272,16 +283,18 @@ assign acc_wr_data = sc_acc_wr_en ?
     {acc1_out, acc0_out};  // Default for non-systolic writes
 
 accumulator accumulators (
-    .clk         (clk),
-    .rst_n       (rst_n),
-    .acc_buf_sel (acc_buf_sel),
-    .clear       (sc_acc_clear),        // Clear accumulator from systolic controller
-    .wr_en       (acc_wr_en_combined),  // Combined write enable
-    .wr_addr     (acc_wr_addr_combined), // Use systolic controller address when active
-    .wr_data     (acc_wr_data),
-    .rd_en       (acc_rd_en),
-    .rd_addr     (acc_addr),
-    .rd_data     (acc_rd_data)
+    .clk            (clk),
+    .rst_n          (rst_n),
+    .acc_buf_sel    (acc_buf_sel),
+    .clear          (sc_acc_clear),         // Clear accumulator from systolic controller
+    .clear_busy     (acc_clear_busy),       // High while clearing (256 cycles)
+    .clear_complete (acc_clear_complete),   // Pulses high when clear finishes
+    .wr_en          (acc_wr_en_combined),   // Combined write enable
+    .wr_addr        (acc_wr_addr_combined), // Use systolic controller address when active
+    .wr_data        (acc_wr_data),
+    .rd_en          (acc_rd_en),
+    .rd_addr        (acc_addr),
+    .rd_data        (acc_rd_data)
 );
 
 // =============================================================================

@@ -461,7 +461,21 @@ end
 //   6. System stuck forever!
 // The controller's internal state machines (like st_ub_state) already
 // handle multi-cycle UB operations correctly.
-assign hazard_detected = sys_busy | vpu_busy | dma_busy | wt_busy;
+
+// CRITICAL: ST_UB pipeline stall
+// Prevent next instruction from entering Execute while ST_UB state machine is active
+// Without this, HALT enters Execute and resets st_ub_state to IDLE (line 390)
+//
+// BUG FIX: The old logic `(st_ub_state != ST_UB_IDLE)` fails on cycle 1 because
+// the state is still IDLE (transitions on next clock edge). This allows HALT to
+// enter Execute on cycle 2, killing the ST_UB before it completes.
+//
+// New logic: Busy if we're executing ST_UB AND haven't reached the final WRITE state.
+// In ST_UB_WRITE, pc_cnt=1 signals instruction completion, so we can let HALT proceed.
+logic st_ub_busy;
+assign st_ub_busy = (exec_valid && (exec_opcode == 6'h05) && (st_ub_state != ST_UB_WRITE));
+
+assign hazard_detected = sys_busy | vpu_busy | dma_busy | wt_busy | st_ub_busy;
 assign sync_hazard = sync_active;
 assign if_id_stall = hazard_detected | sync_hazard;
 assign pipeline_stall = if_id_stall;
