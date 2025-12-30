@@ -734,9 +734,8 @@ always @* begin
                 ub_rd_en        = 1'b1;
                 ub_rd_addr      = {exec_ub_buf_sel, exec_arg1};
                 ub_rd_count     = 9'h001;
-                acc_wr_en       = 1'b1;
-                acc_addr        = exec_arg2;
-                acc_buf_sel     = exec_acc_buf_sel;
+                // NOTE: acc_wr_en, acc_addr, acc_buf_sel driven by systolic_controller
+                // during MATMUL to avoid write conflicts
                 // Store accumulator address and buffer for ST_UB to read (handled in sequential block)
                 pc_cnt_internal = 1'b1;
                 ir_ld_internal  = 1'b1;
@@ -755,9 +754,8 @@ always @* begin
                 ub_rd_en        = 1'b1;
                 ub_rd_addr      = {exec_ub_buf_sel, exec_arg1};
                 ub_rd_count     = 9'h001;
-                acc_wr_en       = 1'b1;
-                acc_addr        = exec_arg2;
-                acc_buf_sel     = exec_acc_buf_sel;
+                // NOTE: acc_wr_en, acc_addr, acc_buf_sel driven by systolic_controller
+                // during CONV2D to avoid write conflicts
                 pc_cnt_internal = 1'b1;
                 ir_ld_internal  = 1'b1;
             end
@@ -775,9 +773,8 @@ always @* begin
                 ub_rd_en        = 1'b1;
                 ub_rd_addr      = {exec_ub_buf_sel, exec_arg1};
                 ub_rd_count     = 9'h001;
-                acc_wr_en       = 1'b1;
-                acc_addr        = exec_arg2;
-                acc_buf_sel     = exec_acc_buf_sel;
+                // NOTE: acc_wr_en, acc_addr, acc_buf_sel driven by systolic_controller
+                // during MATMUL_ACC to avoid write conflicts
                 pc_cnt_internal = 1'b1;
                 ir_ld_internal  = 1'b1;
             end

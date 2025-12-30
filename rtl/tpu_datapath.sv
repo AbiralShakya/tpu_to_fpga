@@ -180,11 +180,20 @@ dual_weight_fifo weight_fifo_inst (
 );
 
 // Weight FIFO control logic
-// For now, use the wt_fifo_wr signal directly for all columns
-// In a full implementation, this would decode tile IDs and use wt_num_tiles
-assign wf_push_col0 = wt_fifo_wr;
-assign wf_push_col1 = wt_fifo_wr;
-assign wf_push_col2 = wt_fifo_wr;
+// CRITICAL: Delay FIFO writes by 1 cycle to compensate for BRAM read latency
+// wt_mem has synchronous read - data arrives 1 cycle after wt_mem_rd_en
+logic wt_fifo_wr_delayed;
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        wt_fifo_wr_delayed <= 1'b0;
+    end else begin
+        wt_fifo_wr_delayed <= wt_fifo_wr;
+    end
+end
+
+assign wf_push_col0 = wt_fifo_wr_delayed;
+assign wf_push_col1 = wt_fifo_wr_delayed;
+assign wf_push_col2 = wt_fifo_wr_delayed;
 assign wf_pop = wt_rd_en;
 
 // Weight FIFO busy logic - busy when DRAM read is active or FIFO is loading
