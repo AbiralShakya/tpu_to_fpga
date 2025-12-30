@@ -33,9 +33,9 @@ module mmu #(
     input  logic [DATA_WIDTH-1:0]   col2_in,             // Column 2 weight input (our extension)
 
     // Accumulator output (tinytinyTPU compatible)
-    output logic [ACC_WIDTH-1:0]    acc0_out,            // Column 0 to accumulator
-    output logic [ACC_WIDTH-1:0]    acc1_out,            // Column 1 to accumulator
-    output logic [ACC_WIDTH-1:0]    acc2_out             // Column 2 to accumulator (our extension)
+    output logic signed [ACC_WIDTH-1:0] acc0_out,        // Column 0 to accumulator (signed)
+    output logic signed [ACC_WIDTH-1:0] acc1_out,        // Column 1 to accumulator (signed)
+    output logic signed [ACC_WIDTH-1:0] acc2_out         // Column 2 to accumulator (signed, our extension)
 );
 
 // =============================================================================

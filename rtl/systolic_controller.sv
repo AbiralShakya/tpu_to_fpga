@@ -61,6 +61,23 @@ logic [7:0] weight_load_counter;  // Counts weight loading cycles
 logic [7:0] compute_counter;      // Counts compute cycles
 logic [7:0] total_rows;           // Total rows to process
 
+// Latch accumulator clear request (stays high during weight loading)
+logic acc_clear_request;
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        acc_clear_request <= 1'b0;
+    end else if (sys_acc_clear && (current_state == SYS_IDLE)) begin
+        // Latch clear request when sys_acc_clear is asserted in IDLE
+        acc_clear_request <= 1'b1;
+    end else if (current_state == SYS_COMPUTE) begin
+        // Clear the request once computation starts
+        acc_clear_request <= 1'b0;
+    end
+end
+
+// Pipeline latency constant (must be declared before use)
+localparam PIPELINE_LATENCY = 4;
+
 // =============================================================================
 // STATE MACHINE LOGIC
 // =============================================================================
@@ -204,10 +221,26 @@ end
 // ACCUMULATOR CONTROL OUTPUTS
 // =============================================================================
 
-// Pipeline latency for 3x3 array: ~4 cycles
-localparam PIPELINE_LATENCY = 4;
+// PIPELINE_LATENCY declared earlier
 logic acc_wr_en_valid;
-assign acc_wr_en_valid = (current_state == SYS_COMPUTE) && (compute_counter >= PIPELINE_LATENCY);
+logic [7:0] acc_wr_count;  // Counter to track number of writes (max 3 for 3x3)
+
+// CRITICAL FIX: Only enable writes for exactly 3 cycles (3 columns)
+// Without this, acc_wr_en_valid stays high for multiple cycles and overwrites data
+assign acc_wr_en_valid = (current_state == SYS_COMPUTE) &&
+                         (compute_counter >= PIPELINE_LATENCY) &&
+                         (acc_wr_count < 3);
+
+// Write counter: Track how many times we've written
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        acc_wr_count <= 8'h00;
+    end else if (current_state == SYS_IDLE) begin
+        acc_wr_count <= 8'h00;  // Reset when idle
+    end else if (acc_wr_en_valid) begin
+        acc_wr_count <= acc_wr_count + 1'b1;  // Increment on each write
+    end
+end
 
 // Write address: start at sys_acc_addr, increment for each column write
 // For 3x3 MATMUL: Write 3 results (acc0, acc1, acc2) at consecutive addresses
@@ -223,7 +256,7 @@ always_ff @(posedge clk or negedge rst_n) begin
     end
 end
 
-// Write enable: active when valid data is available
+// Write enable: active when valid data is available AND write count < 3
 assign acc_wr_en = acc_wr_en_valid;
 
 // Write address: use incremented address
@@ -240,7 +273,8 @@ assign acc_wr_addr_offset = acc_wr_addr_reg - sys_acc_addr;
 assign acc_wr_col01 = acc_wr_en_valid && (acc_wr_addr_offset[1:0] != 2'd2);
 assign acc_wr_col2 = acc_wr_en_valid && (acc_wr_addr_offset[1:0] == 2'd2);
 
-assign acc_clear = sys_acc_clear && (current_state == SYS_IDLE);
+// Clear accumulator during weight loading phase (before computation starts)
+assign acc_clear = acc_clear_request && (current_state == SYS_LOAD_WEIGHTS);
 
 // =============================================================================
 // STATUS OUTPUTS

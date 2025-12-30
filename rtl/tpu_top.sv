@@ -57,6 +57,13 @@ module tpu_top (
 // INTERNAL SIGNALS
 // =============================================================================
 
+// Debug signal wires (from datapath)
+logic [7:0]  debug_col0_wt, debug_col1_wt, debug_col2_wt;
+logic [7:0]  debug_row0_act_latched, debug_row1_act_latched, debug_row2_act_latched;
+logic        debug_systolic_active;
+logic        debug_en_weight_pass;
+logic [31:0] debug_acc0_latched, debug_acc1_latched, debug_acc2_latched;
+
 // =============================================================================
 // CONTROLLER TO DATAPATH CONTROL SIGNALS (24 signals)
 // =============================================================================
@@ -93,11 +100,12 @@ logic [23:0] wt_mem_addr;
 logic        wt_fifo_wr;
 logic [7:0]  wt_num_tiles;
 
-// Accumulator Control (4 signals)
+// Accumulator Control (5 signals)
 logic        acc_wr_en;
 logic        acc_rd_en;
 logic [7:0]  acc_addr;
 logic        acc_buf_sel;
+logic [1:0]  st_ub_col_idx;
 
 // VPU Control (3 signals)
 logic        vpu_start;
@@ -236,6 +244,7 @@ tpu_controller controller (
 
     // Status inputs from datapath
     .sys_busy       (sys_busy),
+    .sys_done       (sys_done),  // Systolic array done
     .vpu_busy       (vpu_busy),
     .dma_busy       (dma_busy),
     .wt_busy        (wt_busy),
@@ -273,6 +282,7 @@ tpu_controller controller (
     .acc_rd_en     (acc_rd_en),
     .acc_addr      (acc_addr),
     .acc_buf_sel   (acc_buf_sel),
+    .st_ub_col_idx (st_ub_col_idx),
 
     // VPU Control
     .vpu_start     (vpu_start),
@@ -366,6 +376,7 @@ basys3_test_interface test_interface (
     .vpu_done           (vpu_done),
     .ub_busy            (ub_busy),         // From datapath
     .ub_done            (ub_done),         // From datapath
+    .halt_req           (halt_req),        // From controller
 
     // MATMUL DEBUG INPUTS (from datapath)
     .debug_col0_wt           (debug_col0_wt),
@@ -419,6 +430,7 @@ tpu_datapath datapath (
     .acc_rd_en      (acc_rd_en),
     .acc_addr       (acc_addr),
     .acc_buf_sel    (acc_buf_sel),
+    .st_ub_col_idx  (st_ub_col_idx),
 
     // VPU Control
     .vpu_start      (vpu_start),

@@ -5,6 +5,7 @@ module accumulator (
     input  logic        rst_n,
 
     input  logic        acc_buf_sel,    // Buffer selection (0/1)
+    input  logic        clear,          // Clear accumulator contents
     input  logic        wr_en,          // Write enable
     input  logic [7:0]  wr_addr,        // Write address
     input  logic [63:0] wr_data,        // Write data (64 bits: col1 + col0)
@@ -37,12 +38,33 @@ always_ff @(posedge clk or negedge rst_n) begin
 end
 
 // Write operation (uses registered buffer selection for consistency)
-always_ff @(posedge clk) begin
-    if (wr_en) begin
-        if (acc_buf_sel_reg == 0)
-            buffer0[wr_addr] <= wr_data;
-        else
-            buffer1[wr_addr] <= wr_data;
+// Also handle clear operation
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        // Reset clears all memory (synthesis should infer this)
+        for (int i = 0; i < 256; i++) begin
+            buffer0[i] <= 64'h0;
+            buffer1[i] <= 64'h0;
+        end
+    end else begin
+        // Clear entire buffer if requested
+        if (clear) begin
+            if (acc_buf_sel_reg == 0) begin
+                for (int i = 0; i < 256; i++) begin
+                    buffer0[i] <= 64'h0;
+                end
+            end else begin
+                for (int i = 0; i < 256; i++) begin
+                    buffer1[i] <= 64'h0;
+                end
+            end
+        end else if (wr_en) begin
+            // Normal write operation
+            if (acc_buf_sel_reg == 0)
+                buffer0[wr_addr] <= wr_data;
+            else
+                buffer1[wr_addr] <= wr_data;
+        end
     end
 end
 

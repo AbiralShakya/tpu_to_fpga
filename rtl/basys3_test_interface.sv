@@ -48,6 +48,7 @@ module basys3_test_interface (
     input  logic        vpu_done,
     input  logic        ub_busy,
     input  logic        ub_done,
+    input  logic        halt_req,       // Halt signal from controller
 
     // MATMUL DEBUG INPUTS (from datapath)
     input  logic [7:0]  debug_col0_wt,
@@ -465,6 +466,7 @@ uart_dma_basys3 uart_dma (
     .vpu_done(vpu_done),
     .ub_busy(ub_busy),
     .ub_done(ub_done),
+    .halt_req(halt_req),              // Wire halt signal to UART DMA
     .debug_state(uart_debug_state),
     .debug_cmd(uart_debug_cmd),
     .debug_byte_count(uart_debug_byte_count),

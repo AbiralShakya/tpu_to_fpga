@@ -42,6 +42,7 @@ module uart_dma_basys3 #(
     input logic        vpu_done,
     input logic        ub_busy,
     input logic        ub_done,
+    input logic        halt_req,       // Halt signal from controller (for Python script detection)
 
     // Debug outputs
     output logic [7:0]  debug_state,
@@ -350,7 +351,7 @@ always @(posedge clk or negedge rst_n) begin
                         8'h04: begin
                             // Start read operation from Unified Buffer
                             ub_rd_en <= 1'b1;
-                            ub_rd_addr <= {1'b0, addr_lo};  // 9-bit address (MSB=0 for now)
+                            ub_rd_addr <= {addr_hi[0], addr_lo};  // 9-bit address: [8]=bank from addr_hi[0], [7:0]=addr_lo
                             ub_rd_count <= 9'd1;  // Read 1 word (256 bits = 32 bytes)
                             byte_count <= 16'h0000;  // Reset byte count for READ_UB
                             read_ub_initialized <= 1'b0;  // Reset initialization flag
@@ -386,7 +387,7 @@ always @(posedge clk or negedge rst_n) begin
                     // CRITICAL: This check MUST be inside rx_valid block to ensure rx_data is valid!
                     if (byte_index == 5'd31) begin
                         ub_wr_en <= 1'b1;
-                        ub_wr_addr <= {1'b0, addr_lo};  // Extend to 9 bits
+                        ub_wr_addr <= {addr_hi[0], addr_lo};  // 9-bit address: [8]=bank from addr_hi[0], [7:0]=addr_lo
                         ub_wr_count <= 9'd1;  // Write 1 word (256 bits = 32 bytes)
                         // CORRECTED byte ordering: byte 0 at [7:0], byte 31 at [255:248]
                         // After 31 bytes received, buffer state is:
@@ -446,7 +447,7 @@ always @(posedge clk or negedge rst_n) begin
                         // We must account for rx_data being the CURRENT byte, not yet shifted in.
                         // The NEW buffer would be {rx_data, ub_buffer[255:8]}, so we shift indices by 8.
                         ub_wr_en <= 1'b1;
-                        ub_wr_addr <= {1'b0, addr_lo};  // Extend to 9 bits
+                        ub_wr_addr <= {addr_hi[0], addr_lo};  // 9-bit address: [8]=bank from addr_hi[0], [7:0]=addr_lo
                         ub_wr_count <= 9'd1;  // Write 1 word (256 bits = 32 bytes)
                         // Construct ub_wr_data as if ub_buffer already had rx_data shifted in:
                         // - OLD [X:Y] maps to NEW [X-8:Y-8]
@@ -671,19 +672,20 @@ always @(posedge clk or negedge rst_n) begin
                     endcase
                 end else begin
                     // Always send status byte when TX is ready
-                    // Status byte format: [7:6]=00, [5]=ub_done, [4]=ub_busy, 
-                    //                     [3]=vpu_done, [2]=vpu_busy, [1]=sys_done, [0]=sys_busy
-                    // 0x20 = all idle (0b00100000) means ub_done=1, all others=0
+                    // CRITICAL: Status byte format includes halt_req in bit 7 for Python script detection
+                    // [7]=halt_req, [6]=0, [5]=ub_done, [4]=ub_busy,
+                    // [3]=vpu_done, [2]=vpu_busy, [1]=sys_done, [0]=sys_busy
+                    // Python script looks for bit 7 (0x80) to detect HALT completion
                 if (tx_ready) begin
                     tx_valid <= 1'b1;
-                    tx_data <= {2'b00, ub_done, ub_busy, vpu_done, vpu_busy, sys_done, sys_busy};
+                    tx_data <= {halt_req, 1'b0, ub_done, ub_busy, vpu_done, vpu_busy, sys_done, sys_busy};
                         debug_tx_count <= debug_tx_count + 1;
-                        debug_last_tx_byte <= {2'b00, ub_done, ub_busy, vpu_done, vpu_busy, sys_done, sys_busy};  // Track what we're sending
+                        debug_last_tx_byte <= {halt_req, 1'b0, ub_done, ub_busy, vpu_done, vpu_busy, sys_done, sys_busy};  // Track what we're sending
                         state <= IDLE;
                     end else begin
                         // Keep tx_valid high until tx_ready goes true
                         tx_valid <= 1'b1;
-                        tx_data <= {2'b00, ub_done, ub_busy, vpu_done, vpu_busy, sys_done, sys_busy};
+                        tx_data <= {halt_req, 1'b0, ub_done, ub_busy, vpu_done, vpu_busy, sys_done, sys_busy};
                     end
                 end
             end

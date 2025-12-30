@@ -14,11 +14,11 @@ module pe #(
 
     // Data inputs (tinytinyTPU compatible interface)
     input  logic [DATA_WIDTH-1:0]   act_in,            // Activation input (flows right)
-    input  logic [ACC_WIDTH-1:0]    psum_in,           // Partial sum input (flows down)
+    input  logic signed [ACC_WIDTH-1:0] psum_in,        // Partial sum input (flows down, signed)
 
     // Outputs
     output logic [DATA_WIDTH-1:0]   act_out,           // Activation flows right
-    output logic [ACC_WIDTH-1:0]    psum_out           // Partial sum flows down
+    output logic signed [ACC_WIDTH-1:0] psum_out        // Partial sum flows down (signed)
 );
 
 // =============================================================================
@@ -47,9 +47,10 @@ assign product_signed   = act_signed * weight_signed;
 assign product_unsigned = act_in * weight_reg;
 
 // Sign-extend or zero-extend product to accumulator width
+// CRITICAL FIX: Explicitly cast unsigned product to signed to avoid implicit conversion issues
 assign product_extended = use_signed ?
     {{(ACC_WIDTH-2*DATA_WIDTH){product_signed[2*DATA_WIDTH-1]}}, product_signed} :
-    {{(ACC_WIDTH-2*DATA_WIDTH){1'b0}}, product_unsigned};
+    $signed({{(ACC_WIDTH-2*DATA_WIDTH){1'b0}}, product_unsigned});
 
 // =============================================================================
 // PE LOGIC (tinytinyTPU compatible)

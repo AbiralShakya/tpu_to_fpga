@@ -11,6 +11,7 @@ module tpu_controller (
 
     // Status inputs from datapath (for hazard detection)
     input  logic       sys_busy,
+    input  logic       sys_done,       // Systolic array operation complete
     input  logic       vpu_busy,
     input  logic       dma_busy,
     input  logic       wt_busy,        // Weight FIFO busy
@@ -49,11 +50,12 @@ module tpu_controller (
     output logic       wt_fifo_wr,      // Weight FIFO write enable
     output logic [7:0] wt_num_tiles,    // Number of tiles to load
 
-    // Accumulator Control (4 signals)
+    // Accumulator Control (5 signals)
     output logic       acc_wr_en,       // Accumulator write enable
     output logic       acc_rd_en,       // Accumulator read enable
     output logic [7:0] acc_addr,        // Accumulator address
     output logic       acc_buf_sel,     // Accumulator buffer selection
+    output logic [1:0] st_ub_col_idx,   // ST_UB column index (0=col0, 1=col1, 2=col2, 3=write)
 
     // VPU Control (3 signals)
     output logic       vpu_start,       // Start VPU operation
@@ -167,11 +169,36 @@ logic      wt_buf_sel_reg;   // Current weight buffer selection
 logic      acc_buf_sel_reg;  // Current accumulator buffer selection
 logic      ub_buf_sel_reg;   // Current unified buffer bank selection
 
+// Store accumulator address from last MATMUL for ST_UB to read
+logic [7:0] stored_acc_addr_reg;  // Accumulator base address from MATMUL
+logic      stored_acc_buf_sel_reg; // Accumulator buffer selection from MATMUL
+logic      stored_acc_signed_reg; // Signed/unsigned mode from MATMUL
+
+// ST_UB byte accumulation registers (collect 3 bytes before writing to UB)
+logic [7:0] st_ub_byte0_reg;  // Accumulator column 0 result
+logic [7:0] st_ub_byte1_reg;  // Accumulator column 1 result
+logic [7:0] st_ub_byte2_reg;  // Accumulator column 2 result
+
 // =============================================================================
 // CONFIGURATION REGISTERS
 // =============================================================================
 
 logic [15:0] cfg_registers [0:255];  // 256 configuration registers
+
+// =============================================================================
+// ST_UB STATE MACHINE (Multi-cycle read from accumulator)
+// =============================================================================
+
+typedef enum logic [2:0] {
+    ST_UB_IDLE = 3'b000,
+    ST_UB_READ_COL0 = 3'b001,      // Read acc0
+    ST_UB_WAIT_COL0 = 3'b010,      // Wait for acc0 data, capture byte0, read acc1
+    ST_UB_WAIT_COL1 = 3'b011,      // Wait for acc1 data, capture byte1, read acc2
+    ST_UB_WAIT_COL2 = 3'b100,      // Wait for acc2 data, capture byte2
+    ST_UB_WRITE = 3'b101           // Write all 3 bytes to UB
+} st_ub_state_t;
+
+st_ub_state_t st_ub_state;
 
 // =============================================================================
 // SYNC STATE MACHINE
@@ -244,6 +271,11 @@ logic if_id_wt_buf_sel;
 logic if_id_acc_buf_sel;
 logic if_id_ub_buf_sel;
 
+// Execute stage buffer selections (declared early for use in sequential blocks)
+logic exec_wt_buf_sel;
+logic exec_acc_buf_sel;
+logic exec_ub_buf_sel;
+
 always @ (posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         if_id_valid    <= 1'b0;
@@ -300,13 +332,21 @@ always @ (posedge clk or negedge rst_n) begin
         wt_buf_sel_reg  <= 1'b0;
         acc_buf_sel_reg <= 1'b0;
         ub_buf_sel_reg  <= 1'b0;
+        stored_acc_addr_reg <= 8'h00;
+        stored_acc_buf_sel_reg <= 1'b0;
+        stored_acc_signed_reg <= 1'b0;
+        st_ub_state <= ST_UB_IDLE;
     end else if (start_execution) begin
         // Reset buffer selection to 0 when starting execution
         // This ensures a clean state for the new program
         wt_buf_sel_reg  <= 1'b0;
         acc_buf_sel_reg <= 1'b0;
         ub_buf_sel_reg  <= 1'b0;
-    end else if (exec_valid && (exec_opcode == SYNC_OP) && buffers_idle) begin
+        stored_acc_addr_reg <= 8'h00;
+        stored_acc_buf_sel_reg <= 1'b0;
+        stored_acc_signed_reg <= 1'b0;
+        st_ub_state <= ST_UB_IDLE;
+    end else if (exec_valid && (exec_opcode == 6'h30) && buffers_idle) begin
         // Only update buffer state when SYNC instruction executes AND buffers are idle
         // This ensures proper pipelining - instructions already in pipeline
         // use their captured buffer state, only future instructions see new state
@@ -314,8 +354,44 @@ always @ (posedge clk or negedge rst_n) begin
         wt_buf_sel_reg  <= ~wt_buf_sel_reg;
         acc_buf_sel_reg <= ~acc_buf_sel_reg;
         ub_buf_sel_reg  <= ~ub_buf_sel_reg;
+    end else if (exec_valid && (exec_opcode == 6'h10)) begin
+        // Store accumulator address, buffer, and signed mode for ST_UB to read
+        stored_acc_addr_reg <= exec_arg2;
+        stored_acc_buf_sel_reg <= exec_acc_buf_sel;
+        stored_acc_signed_reg <= exec_flags[1];  // sys_signed flag
+    end else if (exec_valid && (exec_opcode == 6'h05)) begin
+        // ST_UB state transitions (handled in sequential block below)
+    end else begin
+        // Reset ST_UB state when not executing ST_UB
+        st_ub_state <= ST_UB_IDLE;
     end
     // Otherwise hold current state (including if buffers are busy)
+end
+
+// =============================================================================
+// ST_UB STATE TRANSITIONS (Sequential)
+// =============================================================================
+
+always @ (posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        st_ub_state <= ST_UB_IDLE;
+    end else if (start_execution) begin
+        st_ub_state <= ST_UB_IDLE;
+    end else if (exec_valid && (exec_opcode == 6'h05)) begin
+        // State transitions based on current state
+        case (st_ub_state)
+            ST_UB_IDLE: st_ub_state <= ST_UB_READ_COL0;
+            ST_UB_READ_COL0: st_ub_state <= ST_UB_WAIT_COL0;
+            ST_UB_WAIT_COL0: st_ub_state <= ST_UB_WAIT_COL1;
+            ST_UB_WAIT_COL1: st_ub_state <= ST_UB_WAIT_COL2;
+            ST_UB_WAIT_COL2: st_ub_state <= ST_UB_WRITE;
+            ST_UB_WRITE: st_ub_state <= ST_UB_IDLE;
+            default: st_ub_state <= ST_UB_IDLE;
+        endcase
+    end else begin
+        // Reset when not executing ST_UB
+        st_ub_state <= ST_UB_IDLE;
+    end
 end
 
 // =============================================================================
@@ -377,10 +453,18 @@ end
 // HAZARD DETECTION LOGIC
 // =============================================================================
 
-// CRITICAL FIX: Include ub_busy in hazard detection to prevent
-// issuing new UB operations before previous ones complete.
-// Without this, back-to-back LD_UB/ST_UB instructions cause timing races.
-assign hazard_detected = sys_busy | vpu_busy | dma_busy | wt_busy | ub_busy;
+// CRITICAL FIX: DO NOT include ub_busy in hazard detection!
+// ub_busy is combinatorial (ub_busy = ub_rd_en | ub_wr_en)
+// Including it creates a DEADLOCK:
+//   1. Instruction sets ub_rd_en=1
+//   2. ub_busy goes high (combinatorial)
+//   3. hazard_detected goes high
+//   4. Pipeline stalls
+//   5. Controller can't advance to de-assert ub_rd_en
+//   6. System stuck forever!
+// The controller's internal state machines (like st_ub_state) already
+// handle multi-cycle UB operations correctly.
+assign hazard_detected = sys_busy | vpu_busy | dma_busy | wt_busy;
 assign sync_hazard = sync_active;
 assign if_id_stall = hazard_detected | sync_hazard;
 assign pipeline_stall = if_id_stall;
@@ -389,9 +473,7 @@ assign pipeline_stall = if_id_stall;
 // STAGE 2: EXECUTE LOGIC (with pipelined buffer state)
 // =============================================================================
 
-logic exec_wt_buf_sel;
-logic exec_acc_buf_sel;
-logic exec_ub_buf_sel;
+// exec_wt_buf_sel, exec_acc_buf_sel, exec_ub_buf_sel declared earlier
 
 always @ (posedge clk or negedge rst_n) begin
     if (!rst_n) begin
@@ -476,6 +558,7 @@ always @* begin
     acc_rd_en       = 1'b0;
     acc_addr        = 8'h00;
     acc_buf_sel     = exec_acc_buf_sel;  // Use pipelined buffer state
+    st_ub_col_idx   = 2'd0;              // Default: not in ST_UB write phase
 
     // VPU Control
     vpu_start       = 1'b0;
@@ -512,7 +595,7 @@ always @* begin
             // ================================================================
             // 0x00: NOP - No Operation
             // ================================================================
-            NOP_OP: begin
+            6'h00: begin
                 // All defaults - just pipeline progression
                 pc_cnt_internal = 1'b1;
                 ir_ld_internal  = 1'b1;
@@ -521,7 +604,7 @@ always @* begin
             // ================================================================
             // 0x01: RD_HOST_MEM - Read from Host Memory
             // ================================================================
-            RD_HOST_MEM_OP: begin
+            6'h01: begin
                 dma_start       = 1'b1;
                 dma_dir         = 1'b0;  // Host → TPU
                 dma_ub_addr     = exec_arg1;
@@ -534,7 +617,7 @@ always @* begin
             // ================================================================
             // 0x02: WR_HOST_MEM - Write to Host Memory
             // ================================================================
-            WR_HOST_MEM_OP: begin
+            6'h02: begin
                 dma_start       = 1'b1;
                 dma_dir         = 1'b1;  // TPU → Host
                 dma_ub_addr     = exec_arg1;
@@ -550,7 +633,7 @@ always @* begin
             // arg1 = weight row address (0, 1, 2 for 3x3 array)
             // Reads one row from weight memory and pushes to weight FIFOs
             // For 3x3 array, issue 3 RD_WEIGHT instructions (rows 0, 1, 2)
-            RD_WEIGHT_OP: begin
+            6'h03: begin
                 wt_mem_rd_en    = 1'b1;
                 wt_mem_addr     = {16'b0, exec_arg1};  // Direct row addressing
                 wt_fifo_wr      = 1'b1;
@@ -562,7 +645,7 @@ always @* begin
             // ================================================================
             // 0x04: LD_UB - Load from Unified Buffer
             // ================================================================
-            LD_UB_OP: begin
+            6'h04: begin
                 ub_rd_en        = 1'b1;
                 ub_rd_addr      = {exec_ub_buf_sel, exec_arg1};
                 ub_rd_count     = {1'b0, exec_arg2};
@@ -573,26 +656,78 @@ always @* begin
             // ================================================================
             // 0x05: ST_UB - Store to Unified Buffer
             // ================================================================
-            // Read from accumulator memory and write to unified buffer
-            // For 3x3 MATMUL: Results are at addresses 0, 1, 2 (acc0, acc1, acc2)
-            // ST_UB reads from accumulator address 0 (MATMUL base address)
-            // and writes to UB address specified by exec_arg1
-            // exec_arg2 specifies the count (number of bytes to write)
-            ST_UB_OP: begin
-                acc_rd_en       = 1'b1;                         // Read from accumulator
-                acc_addr        = 8'h00;                         // Always read from address 0 (MATMUL results)
-                acc_buf_sel     = exec_acc_buf_sel;             // Use configured buffer
-                ub_wr_en        = 1'b1;                         // Write to unified buffer
-                ub_wr_addr      = {exec_ub_buf_sel, exec_arg1}; // Use arg1 as UB address
-                ub_wr_count     = {1'b0, exec_arg2};            // Use arg2 as count
-                pc_cnt_internal = 1'b1;
-                ir_ld_internal  = 1'b1;
-            end
+            // Multi-cycle: Read 3 accumulator addresses, accumulate bytes, write once
+            // For 3x3 MATMUL: Results are at stored_acc_addr_reg, stored_acc_addr_reg+1, stored_acc_addr_reg+2
+            // exec_arg1 = UB write address (always bank 0 for UART compatibility)
+            // exec_arg2 = count (number of bytes, should be 3 for 3x3 results)
+            // NOTE: Hazard detection already prevents ST_UB from executing while sys_busy=1
+            6'h05: begin
+                case (st_ub_state)
+                    ST_UB_IDLE: begin
+                        // Start: Read acc0 from accumulator
+                        acc_rd_en = 1'b1;
+                        acc_addr = stored_acc_addr_reg;  // Base address from MATMUL
+                        acc_buf_sel = stored_acc_buf_sel_reg;
+                        st_ub_col_idx = 2'd0;  // Mark this read as col0
+                        pc_cnt_internal = 1'b0;
+                        ir_ld_internal = 1'b0;
+                    end
+                    ST_UB_READ_COL0: begin
+                        // CRITICAL FIX: Set idx=1 when reading addr+1
+                        // Data from acc0 appears this cycle (idx_prev=0, captures to byte0)
+                        // Issue read for acc1 (set idx=1 so next cycle idx_prev=1)
+                        acc_rd_en = 1'b1;
+                        acc_addr = stored_acc_addr_reg + 1;  // acc1 address
+                        acc_buf_sel = stored_acc_buf_sel_reg;
+                        st_ub_col_idx = 2'd1;  // Mark this read as col1
+                        pc_cnt_internal = 1'b0;
+                        ir_ld_internal = 1'b0;
+                    end
+                    ST_UB_WAIT_COL0: begin
+                        // CRITICAL FIX: Set idx=2 when reading addr+2
+                        // Data from acc1 appears this cycle (idx_prev=1, captures to byte1)
+                        // Issue read for acc2 (set idx=2 so next cycle idx_prev=2)
+                        acc_rd_en = 1'b1;
+                        acc_addr = stored_acc_addr_reg + 2;  // acc2 address
+                        acc_buf_sel = stored_acc_buf_sel_reg;
+                        st_ub_col_idx = 2'd2;  // Mark this read as col2
+                        pc_cnt_internal = 1'b0;
+                        ir_ld_internal = 1'b0;
+                    end
+                    ST_UB_WAIT_COL1: begin
+                        // Data from acc2 appears this cycle (idx_prev=2, captures to byte2)
+                        // No more reads needed
+                        st_ub_col_idx = 2'd2;  // Keep at col2 (no more captures)
+                        pc_cnt_internal = 1'b0;
+                        ir_ld_internal = 1'b0;
+                    end
+                    ST_UB_WAIT_COL2: begin
+                        // All 3 bytes captured, prepare to write
+                        st_ub_col_idx = 2'd2;  // Keep at col2
+                        pc_cnt_internal = 1'b0;
+                        ir_ld_internal = 1'b0;
+                    end
+                    ST_UB_WRITE: begin
+                        // Write all 3 bytes to UB as single 256-bit word
+                        ub_wr_en = 1'b1;
+                        ub_wr_addr = {1'b0, exec_arg1};  // Single address, bank 0
+                        ub_wr_count = 9'h001;
+                        st_ub_col_idx = 2'd3;  // Indicate write phase
+                        pc_cnt_internal = 1'b1;  // Instruction complete
+                        ir_ld_internal = 1'b1;
+                    end
+                    default: begin
+                        st_ub_col_idx = 2'd0;
+                        pc_cnt_internal = 1'b0;
+                        ir_ld_internal = 1'b0;
+                    end
+                endcase
+            end  // Close 6'h05: begin
 
             // ================================================================
             // 0x10: MATMUL - Matrix Multiplication
             // ================================================================
-            MATMUL_OP: begin
+            6'h10: begin
                 sys_start       = 1'b1;
                 sys_mode        = 2'b00;  // Matrix multiply mode
                 sys_rows        = exec_arg3;
@@ -605,6 +740,7 @@ always @* begin
                 acc_wr_en       = 1'b1;
                 acc_addr        = exec_arg2;
                 acc_buf_sel     = exec_acc_buf_sel;
+                // Store accumulator address and buffer for ST_UB to read (handled in sequential block)
                 pc_cnt_internal = 1'b1;
                 ir_ld_internal  = 1'b1;
             end
@@ -612,7 +748,7 @@ always @* begin
             // ================================================================
             // 0x11: CONV2D - 2D Convolution
             // ================================================================
-            CONV2D_OP: begin
+            6'h11: begin
                 sys_start       = 1'b1;
                 sys_mode        = 2'b01;  // Convolution mode
                 sys_rows        = exec_arg3;  // Derived from kernel/stride
@@ -632,7 +768,7 @@ always @* begin
             // ================================================================
             // 0x12: MATMUL_ACC - Accumulate Matrix Multiplication
             // ================================================================
-            MATMUL_ACC_OP: begin
+            6'h12: begin
                 sys_start       = 1'b1;
                 sys_mode        = 2'b10;  // Accumulate mode
                 sys_rows        = exec_arg3;
@@ -652,7 +788,7 @@ always @* begin
             // ================================================================
             // 0x18: RELU - Rectified Linear Unit
             // ================================================================
-            RELU_OP: begin
+            6'h18: begin
                 vpu_start       = 1'b1;
                 vpu_mode        = 4'h1;   // ReLU mode
                 vpu_param       = exec_flags[0] ? cfg_registers[{6'b0, exec_flags}] : 16'h0000;
@@ -669,7 +805,7 @@ always @* begin
             // ================================================================
             // 0x19: RELU6 - ReLU6 Activation
             // ================================================================
-            RELU6_OP: begin
+            6'h19: begin
                 vpu_start       = 1'b1;
                 vpu_mode        = 4'h2;   // ReLU6 mode
                 vpu_param       = exec_flags[0] ? cfg_registers[{6'b0, exec_flags}] : 16'h0000;
@@ -686,7 +822,7 @@ always @* begin
             // ================================================================
             // 0x1A: SIGMOID - Sigmoid Activation
             // ================================================================
-            SIGMOID_OP: begin
+            6'h1A: begin
                 vpu_start       = 1'b1;
                 vpu_mode        = 4'h3;   // Sigmoid mode
                 vpu_param       = exec_flags[0] ? cfg_registers[{6'b0, exec_flags}] : 16'h0000;
@@ -703,7 +839,7 @@ always @* begin
             // ================================================================
             // 0x1B: TANH - Hyperbolic Tangent
             // ================================================================
-            TANH_OP: begin
+            6'h1B: begin
                 vpu_start       = 1'b1;
                 vpu_mode        = 4'h4;   // Tanh mode
                 vpu_param       = exec_flags[0] ? cfg_registers[{6'b0, exec_flags}] : 16'h0000;
@@ -720,7 +856,7 @@ always @* begin
             // ================================================================
             // 0x20: MAXPOOL - Max Pooling
             // ================================================================
-            MAXPOOL_OP: begin
+            6'h20: begin
                 vpu_start       = 1'b1;
                 vpu_mode        = 4'h6;   // Max pool mode
                 ub_rd_en        = 1'b1;
@@ -736,7 +872,7 @@ always @* begin
             // ================================================================
             // 0x21: AVGPOOL - Average Pooling
             // ================================================================
-            AVGPOOL_OP: begin
+            6'h21: begin
                 vpu_start       = 1'b1;
                 vpu_mode        = 4'h7;   // Avg pool mode
                 ub_rd_en        = 1'b1;
@@ -752,7 +888,7 @@ always @* begin
             // ================================================================
             // 0x22: ADD_BIAS - Add Bias Vector
             // ================================================================
-            ADD_BIAS_OP: begin
+            6'h22: begin
                 vpu_start       = 1'b1;
                 vpu_mode        = 4'h5;   // Bias add mode
                 acc_rd_en       = 1'b1;
@@ -771,7 +907,7 @@ always @* begin
             // ================================================================
             // 0x23: BATCH_NORM - Batch Normalization
             // ================================================================
-            BATCH_NORM_OP: begin
+            6'h23: begin
                 vpu_start       = 1'b1;
                 vpu_mode        = 4'h8;   // Batch norm mode
                 vpu_param       = {8'h00, exec_arg3};  // Config register base index
@@ -788,7 +924,7 @@ always @* begin
             // ================================================================
             // 0x30: SYNC - Synchronize Operations
             // ================================================================
-            SYNC_OP: begin
+            6'h30: begin
                 sync_wait       = 1'b1;
                 sync_mask       = exec_arg1[3:0];
                 sync_timeout    = {exec_arg2, exec_arg3};
@@ -803,7 +939,7 @@ always @* begin
             // ================================================================
             // 0x31: CFG_REG - Configure Register
             // ================================================================
-            CFG_REG_OP: begin
+            6'h31: begin
                 cfg_wr_en       = 1'b1;
                 cfg_addr        = exec_arg1;
                 cfg_data        = {exec_arg2, exec_arg3};
@@ -814,7 +950,7 @@ always @* begin
             // ================================================================
             // 0x3F: HALT - Program Termination
             // ================================================================
-            HALT_OP: begin
+            6'h3F: begin
                 halt_req        = 1'b1;
                 interrupt_en    = 1'b1;
                 pc_cnt_internal = 1'b0;  // Stop PC increment
