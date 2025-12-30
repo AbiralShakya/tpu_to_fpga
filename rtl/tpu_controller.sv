@@ -327,6 +327,8 @@ end
 logic buffers_idle;
 assign buffers_idle = !ub_busy && !wt_busy;  // Both unified buffer and weight FIFO must be idle
 
+// Buffer selection and stored accumulator state - st_ub_state is driven ONLY
+// by the separate always block below to avoid multi-driver synthesis errors
 always @ (posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         wt_buf_sel_reg  <= 1'b0;
@@ -335,7 +337,7 @@ always @ (posedge clk or negedge rst_n) begin
         stored_acc_addr_reg <= 8'h00;
         stored_acc_buf_sel_reg <= 1'b0;
         stored_acc_signed_reg <= 1'b0;
-        st_ub_state <= ST_UB_IDLE;
+        // NOTE: st_ub_state is driven by separate always block
     end else if (start_execution) begin
         // Reset buffer selection to 0 when starting execution
         // This ensures a clean state for the new program
@@ -345,7 +347,7 @@ always @ (posedge clk or negedge rst_n) begin
         stored_acc_addr_reg <= 8'h00;
         stored_acc_buf_sel_reg <= 1'b0;
         stored_acc_signed_reg <= 1'b0;
-        st_ub_state <= ST_UB_IDLE;
+        // NOTE: st_ub_state is driven by separate always block
     end else if (exec_valid && (exec_opcode == 6'h30) && buffers_idle) begin
         // Only update buffer state when SYNC instruction executes AND buffers are idle
         // This ensures proper pipelining - instructions already in pipeline
@@ -359,11 +361,6 @@ always @ (posedge clk or negedge rst_n) begin
         stored_acc_addr_reg <= exec_arg2;
         stored_acc_buf_sel_reg <= exec_acc_buf_sel;
         stored_acc_signed_reg <= exec_flags[1];  // sys_signed flag
-    end else if (exec_valid && (exec_opcode == 6'h05)) begin
-        // ST_UB state transitions (handled in sequential block below)
-    end else begin
-        // Reset ST_UB state when not executing ST_UB
-        st_ub_state <= ST_UB_IDLE;
     end
     // Otherwise hold current state (including if buffers are busy)
 end
