@@ -13,6 +13,8 @@ module activation_pipeline (
     input  logic signed [31:0] target_in,    // optional target for loss (set to 0 if unused)
 
     // Configuration
+    input  logic        passthrough,     // 1 = passthrough mode (no ReLU, no norm, no quant, just clamp)
+    input  logic        unsigned_mode,  // 1 = unsigned clamp [0,255], 0 = signed clamp [-128,127]
     input  logic signed [15:0] norm_gain,
     input  logic signed [31:0] norm_bias,
     input  logic [4:0]  norm_shift,
@@ -36,6 +38,7 @@ module activation_pipeline (
         .rst_n(rst_n),
         .valid_in(valid_in),
         .data_in(acc_in),
+        .passthrough(passthrough),
         .valid_out(s1_valid),
         .data_out(s1_data)
     );
@@ -75,8 +78,7 @@ module activation_pipeline (
         .loss_out(loss_out)
     );
 
-    // Stage 3b: Quantization to UB (affine quantization)
-    // x_q = clip( round(x * (1/S)) + Z , -128, 127 )
+    // Stage 3b: Quantization to UB (affine quantization) or Passthrough Clamping
     logic signed [7:0] ub_q_reg;
     logic valid_reg;
 
@@ -84,26 +86,54 @@ module activation_pipeline (
     logic signed [47:0] mult_rounded;
     logic signed [31:0] scaled;
     logic signed [31:0] biased;
+    logic signed [31:0] clamp_input;  // Input to clamping logic
 
+    // Passthrough mode: skip normalization and quantization, just clamp
+    // Normal mode: apply normalization and quantization
+    assign clamp_input = passthrough ? s1_data : s2_data;
+
+    // Quantization (only in normal mode)
     assign mult = s2_data * q_inv_scale;              // 32x16 -> 48
     assign mult_rounded = mult + 48'sd128;            // +0.5 * 2^8 for nearest
     assign scaled = 32'(mult_rounded >>> 8);          // back to Q0
     assign biased = scaled + {{24{q_zero_point[7]}}, q_zero_point};
 
-    // Simple saturation for int8 (inline)
+    // Clamping: signed [-128,127] or unsigned [0,255]
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             valid_reg <= 1'b0;
             ub_q_reg  <= 8'sd0;
         end else begin
-            valid_reg <= s2_valid;
-            // Simple saturation without function call
-            if (biased > 127)
-                ub_q_reg <= 8'sd127;
-            else if (biased < -128)
-                ub_q_reg <= -8'sd128;
-            else
-                ub_q_reg <= biased[7:0];
+            valid_reg <= passthrough ? s1_valid : s2_valid;
+            if (passthrough) begin
+                // Passthrough mode: direct clamping
+                if (unsigned_mode) begin
+                    // Unsigned: clamp to [0, 255]
+                    // CRITICAL: Use signed comparison for negative check, then unsigned for upper bound
+                    if ($signed(clamp_input) < 0)
+                        ub_q_reg <= 8'd0;  // Negative values clamp to 0
+                    else if (clamp_input > 32'd255)
+                        ub_q_reg <= 8'd255;  // Values > 255 clamp to 255
+                    else
+                        ub_q_reg <= clamp_input[7:0];  // Direct truncation for [0, 255]
+                end else begin
+                    // Signed: clamp to [-128, 127]
+                    if (clamp_input > 32'sd127)
+                        ub_q_reg <= 8'sd127;
+                    else if (clamp_input < -32'sd128)
+                        ub_q_reg <= -8'sd128;
+                    else
+                        ub_q_reg <= clamp_input[7:0];
+                end
+            end else begin
+                // Normal mode: quantization with signed clamping
+                if (biased > 127)
+                    ub_q_reg <= 8'sd127;
+                else if (biased < -128)
+                    ub_q_reg <= -8'sd128;
+                else
+                    ub_q_reg <= biased[7:0];
+            end
         end
     end
 

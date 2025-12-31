@@ -34,10 +34,8 @@ module systolic_controller (
     output logic        systolic_active,
 
     // Additional control outputs
-    output logic        acc_wr_en,        // Accumulator write enable
-    output logic [7:0]  acc_wr_addr,      // Accumulator write address
-    output logic        acc_wr_col01,     // Write acc0+acc1 (even addresses)
-    output logic        acc_wr_col2,      // Write acc2 (odd addresses)
+    output logic        acc_wr_en,        // Accumulator write enable (writes all 3 columns at once)
+    output logic [7:0]  acc_wr_addr,      // Accumulator write address (single address for all 3 columns)
     output logic        acc_clear,        // Accumulator clear signal
     output logic [7:0]  weight_load_cnt   // Weight loading counter (for FIFO pop gating)
 );
@@ -276,57 +274,17 @@ end
 // ACCUMULATOR CONTROL OUTPUTS
 // =============================================================================
 
-// PIPELINE_LATENCY declared earlier
+// Accumulator write: Write all 3 columns at once to a single address
+// With 96-bit wide word architecture, all 3 columns are packed and written in one cycle
 logic acc_wr_en_valid;
-logic [7:0] acc_wr_count;  // Counter to track number of writes (max 3 for 3x3)
 
-// CRITICAL FIX: Only enable writes for exactly 3 cycles (3 columns)
-// Without this, acc_wr_en_valid stays high for multiple cycles and overwrites data
+// Write once when pipeline latency is met (all 3 columns are ready)
 assign acc_wr_en_valid = (current_state == SYS_COMPUTE) &&
-                         (compute_counter >= PIPELINE_LATENCY) &&
-                         (acc_wr_count < 3);
+                         (compute_counter >= (PIPELINE_LATENCY + 2));  // Wait for all 3 columns
 
-// Write counter: Track how many times we've written
-always_ff @(posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-        acc_wr_count <= 8'h00;
-    end else if (current_state == SYS_IDLE) begin
-        acc_wr_count <= 8'h00;  // Reset when idle
-    end else if (acc_wr_en_valid) begin
-        acc_wr_count <= acc_wr_count + 1'b1;  // Increment on each write
-    end
-end
-
-// Write address: start at sys_acc_addr, increment for each column write
-// For 3x3 MATMUL: Write 3 results (acc0, acc1, acc2) at consecutive addresses
-logic [7:0] acc_wr_addr_reg;
-always_ff @(posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-        acc_wr_addr_reg <= 8'h00;
-    end else if (current_state == SYS_IDLE && sys_start) begin
-        acc_wr_addr_reg <= sys_acc_addr;  // Initialize to base address
-    end else if (acc_wr_en_valid) begin
-        // Increment address after writing each column (3 writes total for 3x3)
-        acc_wr_addr_reg <= acc_wr_addr_reg + 1'b1;
-    end
-end
-
-// Write enable: active when valid data is available AND write count < 3
+// Write enable and address
 assign acc_wr_en = acc_wr_en_valid;
-
-// Write address: use incremented address
-assign acc_wr_addr = acc_wr_addr_reg;
-
-// Column selection: Write each column result in sequence
-// For 3x3 MATMUL: Write acc0 (addr), acc1 (addr+1), acc2 (addr+2)
-// Use address offset to determine which column
-logic [7:0] acc_wr_addr_offset;
-assign acc_wr_addr_offset = acc_wr_addr_reg - sys_acc_addr;
-
-// Column selection signals based on address offset
-// Offset 0: acc0, Offset 1: acc1, Offset 2: acc2
-assign acc_wr_col01 = acc_wr_en_valid && (acc_wr_addr_offset[1:0] != 2'd2);
-assign acc_wr_col2 = acc_wr_en_valid && (acc_wr_addr_offset[1:0] == 2'd2);
+assign acc_wr_addr = sys_acc_addr;  // Single address for all 3 columns
 
 // Clear accumulator during SYS_CLEAR state (sequential clear takes 256 cycles)
 // Stays high until acc_clear_busy goes low

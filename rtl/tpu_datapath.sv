@@ -36,7 +36,7 @@ module tpu_datapath (
     input  logic        acc_buf_sel,     // Accumulator buffer selection
     input  logic [1:0]  st_ub_col_idx,   // ST_UB column index (0/1/2=capture, 3=write)
 
-    // VPU Control (3 signals)
+    // VPU Control (3 signals)  
     input  logic        vpu_start,       // Start VPU operation
     input  logic [3:0]  vpu_mode,        // VPU function selection
     input  logic [15:0] vpu_param,       // VPU operation parameter
@@ -96,15 +96,13 @@ logic        en_capture_row2_col0, en_capture_row2_col1, en_capture_row2_col2;
 logic        systolic_active;
 
 // Systolic controller accumulator outputs (separate from input ports to avoid multi-driver)
-logic        sc_acc_wr_en;    // Accumulator write enable from systolic controller
+logic        sc_acc_wr_en;    // Accumulator write enable from systolic controller (writes all 3 columns)
 logic [7:0]  sc_acc_wr_addr;  // Accumulator write address from systolic controller
-logic        sc_acc_wr_col01; // Write acc0+acc1 (even addresses)
-logic        sc_acc_wr_col2;  // Write acc2 (odd addresses)
 logic        sc_acc_clear;    // Accumulator clear from systolic controller
 
-// Accumulator connections
-logic [63:0] acc_wr_data;
-logic [63:0] acc_rd_data;
+// Accumulator connections (96-bit wide word: all 3 columns per address)
+logic [95:0] acc_wr_data;
+logic [95:0] acc_rd_data;
 logic        acc_clear_busy;     // High while accumulator clear is in progress (256 cycles)
 logic        acc_clear_complete; // Pulses high when clear finishes (for race-free handshaking)
 
@@ -153,8 +151,6 @@ systolic_controller systolic_ctrl (
     .systolic_active (systolic_active),
     .acc_wr_en       (sc_acc_wr_en),    // Use internal signal, not input port
     .acc_wr_addr     (sc_acc_wr_addr),  // Use internal signal, not input port
-    .acc_wr_col01    (sc_acc_wr_col01), // Column selection: acc0+acc1
-    .acc_wr_col2     (sc_acc_wr_col2),  // Column selection: acc2
     .acc_clear       (sc_acc_clear),    // Accumulator clear from systolic controller
     .weight_load_cnt (weight_load_counter) // Weight load counter for FIFO pop gating
 );
@@ -252,35 +248,12 @@ assign acc_wr_en_combined = sc_acc_wr_en | acc_wr_en;
 logic [7:0] acc_wr_addr_combined;
 assign acc_wr_addr_combined = sc_acc_wr_en ? sc_acc_wr_addr : acc_addr;
 
-// Accumulator write data selection: Handle all 3 columns (acc0, acc1, acc2)
-// Since accumulator is 64-bit, we pad each 32-bit result to 64 bits
-// For 3x3 MATMUL: Write acc0 (addr), acc1 (addr+1), acc2 (addr+2) separately
-// acc_wr_col01 is true for acc0 (offset 0) and acc1 (offset 1)
-// acc_wr_col2 is true for acc2 (offset 2)
-// Use address LSB to distinguish acc0 (LSB=0) from acc1 (LSB=1)
-logic [7:0] acc_wr_addr_offset;
-assign acc_wr_addr_offset = sc_acc_wr_addr - sys_acc_addr;
-
-logic [63:0] acc_wr_data_col0, acc_wr_data_col1, acc_wr_data_col2;
-// Store signed values properly: sign-extend for signed, zero-extend for unsigned
-// CRITICAL: acc0_out, acc1_out, acc2_out are signed wires, so acc0_out[31] IS the sign bit
-// Use sys_signed to determine extension mode
-assign acc_wr_data_col0 = sys_signed ?
-    {{32{acc0_out[31]}}, acc0_out} :  // Sign-extend if signed (duplicate sign bit)
-    {32'h0, acc0_out};                 // Zero-extend if unsigned
-assign acc_wr_data_col1 = sys_signed ?
-    {{32{acc1_out[31]}}, acc1_out} :  // Sign-extend if signed (duplicate sign bit)
-    {32'h0, acc1_out};                 // Zero-extend if unsigned
-assign acc_wr_data_col2 = sys_signed ?
-    {{32{acc2_out[31]}}, acc2_out} :  // Sign-extend if signed (duplicate sign bit)
-    {32'h0, acc2_out};                 // Zero-extend if unsigned
-
-// Select data based on address offset (which column we're writing)
+// Accumulator write data: Pack all 3 columns into 96-bit word
+// Format: {Col2[31:0], Col1[31:0], Col0[31:0]}
+// Write all 3 columns at once to a single address
 assign acc_wr_data = sc_acc_wr_en ? 
-    ((acc_wr_addr_offset[1:0] == 2'd0) ? acc_wr_data_col0 :
-     (acc_wr_addr_offset[1:0] == 2'd1) ? acc_wr_data_col1 :
-     acc_wr_data_col2) :
-    {acc1_out, acc0_out};  // Default for non-systolic writes
+    {acc2_out, acc1_out, acc0_out} :  // Pack all 3 columns for systolic writes
+    {32'h0, 32'h0, acc0_out};          // Default for non-systolic writes (pad with zeros)
 
 accumulator accumulators (
     .clk            (clk),
@@ -317,12 +290,11 @@ assign q_inv_scale = 16'h0100;   // Scale = 1.0 (Q8.8)
 assign q_zero_point = 8'sd0;     // Zero point = 0
 
 // Extract individual accumulator outputs for pipelines
-// NOTE: Accumulator stores columns sequentially (one per address), not packed
-// So when reading address N+2, column 2 data appears in acc_rd_data[31:0]
+// Accumulator stores all 3 columns per address: {Col2[31:0], Col1[31:0], Col0[31:0]}
 logic signed [31:0] acc_col0, acc_col1, acc_col2;
-assign acc_col0 = acc_rd_data[31:0];    // Column 0 (when reading address N)
-assign acc_col1 = acc_rd_data[31:0];    // Column 1 (when reading address N+1)
-assign acc_col2 = acc_rd_data[31:0];    // Column 2 (when reading address N+2) - FIXED from 32'b0
+assign acc_col0 = acc_rd_data[31:0];    // Column 0 (LSB)
+assign acc_col1 = acc_rd_data[63:32];   // Column 1 (middle)
+assign acc_col2 = acc_rd_data[95:64];  // Column 2 (MSB)
 
 // Delay valid signal by 1 cycle to match accumulator's registered read output
 // Accumulator read is synchronous: when acc_rd_en is asserted, data appears on next cycle
@@ -341,12 +313,32 @@ logic signed [7:0] ap_data_col0, ap_data_col1, ap_data_col2;
 logic loss_valid_col0, loss_valid_col1, loss_valid_col2;
 logic signed [31:0] loss_col0, loss_col1, loss_col2;
 
+// ST_UB uses passthrough mode (no ReLU, no normalization, just clamping)
+// Passthrough must be active when data enters pipeline and remain stable for pipeline latency
+// Latch passthrough when acc_rd_en is asserted (ST_UB read), clear when ST_UB completes
+logic st_ub_passthrough, st_ub_passthrough_reg;
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        st_ub_passthrough_reg <= 1'b0;
+    end else begin
+        // Set when ST_UB reads (acc_rd_en asserted), clear when ST_UB write completes (st_ub_col_idx == 3)
+        if (acc_rd_en) begin
+            st_ub_passthrough_reg <= 1'b1;  // Latch passthrough when read starts
+        end else if (st_ub_col_idx == 2'd3) begin
+            st_ub_passthrough_reg <= 1'b0;  // Clear when write completes
+        end
+    end
+end
+assign st_ub_passthrough = st_ub_passthrough_reg;
+
 activation_pipeline ap_col0 (
     .clk(clk),
     .rst_n(rst_n),
     .valid_in(acc_rd_en_delayed),  // Delayed by 1 cycle to match accumulator registered output
     .acc_in(acc_col0),
     .target_in(32'sd0),    // No loss computation for inference
+    .passthrough(st_ub_passthrough),  // Passthrough for ST_UB
+    .unsigned_mode(!stored_signed_mode),  // Unsigned if not signed mode
     .norm_gain(norm_gain),
     .norm_bias(norm_bias),
     .norm_shift(norm_shift),
@@ -364,6 +356,8 @@ activation_pipeline ap_col1 (
     .valid_in(acc_rd_en_delayed),  // Delayed by 1 cycle to match accumulator registered output
     .acc_in(acc_col1),
     .target_in(32'sd0),
+    .passthrough(st_ub_passthrough),  // Passthrough for ST_UB
+    .unsigned_mode(!stored_signed_mode),  // Unsigned if not signed mode
     .norm_gain(norm_gain),
     .norm_bias(norm_bias),
     .norm_shift(norm_shift),
@@ -381,6 +375,8 @@ activation_pipeline ap_col2 (
     .valid_in(acc_rd_en_delayed),  // Delayed by 1 cycle to match accumulator registered output
     .acc_in(acc_col2),
     .target_in(32'sd0),
+    .passthrough(st_ub_passthrough),  // Passthrough for ST_UB
+    .unsigned_mode(!stored_signed_mode),  // Unsigned if not signed mode
     .norm_gain(norm_gain),
     .norm_bias(norm_bias),
     .norm_shift(norm_shift),
@@ -542,66 +538,17 @@ assign debug_acc2_latched = acc2_latched;
 // =============================================================================
 // ACCUMULATOR OUTPUT FOR ST_UB
 // =============================================================================
-// ST_UB reads from accumulator memory (multi-cycle)
-// For 3x3 MATMUL: Results are stored at addresses N, N+1, N+2
-// Each 64-bit accumulator word contains one 32-bit result in the lower 32 bits
-// Extract the lower 8 bits of each result for int8 output
-// Layout: [255:24]=0 padding, [23:16]=acc2[7:0], [15:8]=acc1[7:0], [7:0]=acc0[7:0]
+// ST_UB reads from accumulator memory
+// For 3x3 MATMUL: All 3 columns stored at single address in 96-bit word
+// Format: {Col2[31:0], Col1[31:0], Col0[31:0]}
+// Extract and clamp each column to 8-bit for int8 output
 
 // CRITICAL: BRAM already provides 1-cycle registered read latency!
 // accumulator.sv uses: always_ff @(posedge clk) if (rd_en) rd_data <= memory[addr];
 // So acc_rd_data is ALREADY delayed by 1 cycle. Don't add another delay!
 logic acc_rd_en_prev;  // Track when read was issued
 
-// ST_UB byte accumulation registers
-// These accumulate the 3 bytes (col0, col1, col2) before writing to UB as a single word
-logic [7:0] st_ub_byte0, st_ub_byte1, st_ub_byte2;
-logic [1:0] st_ub_col_idx_prev;  // Track which column to capture
-
-always_ff @(posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-        acc_rd_en_prev <= 1'b0;
-        st_ub_byte0 <= 8'h00;
-        st_ub_byte1 <= 8'h00;
-        st_ub_byte2 <= 8'h00;
-        st_ub_col_idx_prev <= 2'd3;   // Init to invalid value
-    end else begin
-        // Track when read was issued (1 cycle before data is valid)
-        acc_rd_en_prev <= acc_rd_en;
-        st_ub_col_idx_prev <= st_ub_col_idx;
-
-        // ST_UB byte accumulation: Capture when data from BRAM is valid
-        // Cycle N: acc_rd_en=1, st_ub_col_idx=X, read addrX
-        // Cycle N+1: acc_rd_data valid from BRAM, acc_rd_en_prev=1, st_ub_col_idx_prev=X
-        //            → Capture directly from acc_rd_data (no extra reg!)
-        // CRITICAL: Only capture when acc_rd_en_prev=1 (data is valid)
-        if (acc_rd_en_prev) begin
-            case (st_ub_col_idx_prev)
-                2'd0: st_ub_byte0 <= acc_result_clamped;  // Capture col0
-                2'd1: st_ub_byte1 <= acc_result_clamped;  // Capture col1
-                2'd2: st_ub_byte2 <= acc_result_clamped;  // Capture col2
-                default: ;  // No capture
-            endcase
-        end
-    end
-end
-
-// For non-ST_UB operations, keep acc_rd_data in a register for other uses
-logic [63:0] acc_rd_data_reg;
-always_ff @(posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-        acc_rd_data_reg <= 64'h0;
-    end else if (acc_rd_en_prev) begin
-        acc_rd_data_reg <= acc_rd_data;
-    end
-end
-
-// Extract 8-bit result from accumulator memory read with proper clamping
-// CRITICAL FIX: Use acc_rd_data DIRECTLY (BRAM output) instead of acc_rd_data_reg
-// This removes the extra cycle of latency that was causing ST_UB to capture zeros
-// The BRAM (accumulator.sv) already provides 1-cycle registered delay
-
-// Store signed mode from last MATMUL (updated when sys_signed changes during MATMUL)
+// Store signed mode from last MATMUL (needed for clamping)
 logic stored_signed_mode;
 always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
@@ -611,14 +558,57 @@ always_ff @(posedge clk or negedge rst_n) begin
     end
 end
 
-// Extract the 32-bit value - it's stored in lower 32 bits, properly extended
+// ST_UB byte accumulation: Use activation pipeline outputs (passthrough mode)
+// Activation pipelines process all 3 columns and output clamped values
+// Pipeline delay: activation (1 cycle) -> normalization (1 cycle) -> quantization (1 cycle) = 3 cycles total
+// But in passthrough mode: activation (1 cycle, passthrough) -> quantization (1 cycle, direct clamp) = 2 cycles
+logic [7:0] st_ub_byte0, st_ub_byte1, st_ub_byte2;
+
+// Capture activation pipeline outputs when valid during ST_UB write phase
+// The pipelines are in passthrough mode, so they just clamp the values
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        st_ub_byte0 <= 8'h00;
+        st_ub_byte1 <= 8'h00;
+        st_ub_byte2 <= 8'h00;
+    end else begin
+        // Capture from activation pipelines when valid and ST_UB is in write phase
+        if (ap_valid_col0 && (st_ub_col_idx == 2'd3)) begin
+            st_ub_byte0 <= ap_data_col0;
+        end
+        if (ap_valid_col1 && (st_ub_col_idx == 2'd3)) begin
+            st_ub_byte1 <= ap_data_col1;
+        end
+        if (ap_valid_col2 && (st_ub_col_idx == 2'd3)) begin
+            st_ub_byte2 <= ap_data_col2;
+        end
+    end
+end
+
+// For non-ST_UB operations, keep acc_rd_data in a register for other uses
+logic [95:0] acc_rd_data_reg;
+always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        acc_rd_data_reg <= 96'h0;
+    end else if (acc_rd_en_prev) begin
+        acc_rd_data_reg <= acc_rd_data;
+    end
+end
+
+// Extract 32-bit column value from 96-bit accumulator read (for non-ST_UB operations)
+// ST_UB reads all 3 columns at once, extracts based on st_ub_col_idx_prev
+logic [31:0] acc_result_selected;
+assign acc_result_selected = (st_ub_col_idx_prev == 2'd0) ? acc_rd_data[31:0] :
+                             (st_ub_col_idx_prev == 2'd1) ? acc_rd_data[63:32] :
+                             acc_rd_data[95:64];
+
 logic signed [31:0] acc_result_signed;
 logic [31:0] acc_result_unsigned;
 logic [7:0] acc_result_clamped;
 
 // CRITICAL: Use acc_rd_data directly (BRAM output), not acc_rd_data_reg (adds extra delay)
-assign acc_result_signed = $signed(acc_rd_data[31:0]);
-assign acc_result_unsigned = acc_rd_data[31:0];
+assign acc_result_signed = $signed(acc_result_selected);
+assign acc_result_unsigned = acc_result_selected;
 
 // Clamp based on signed/unsigned mode
 // Signed: clamp to [-128, 127]
@@ -627,10 +617,10 @@ assign acc_result_clamped = stored_signed_mode ?
     // Signed mode: clamp to [-128, 127]
     ((acc_result_signed > 32'sd127) ? 8'd127 :
      (acc_result_signed < -32'sd128) ? 8'd128 :  // 128 = -128 in 2's complement
-     acc_rd_data[7:0]) :  // Use lower 8 bits from BRAM output
+     acc_result_selected[7:0]) :
     // Unsigned mode: clamp to [0, 255]
     ((acc_result_unsigned > 32'd255) ? 8'd255 :
-     acc_rd_data[7:0]);  // Use lower 8 bits from BRAM output
+     acc_result_selected[7:0]);
 
 // For ST_UB, write all 3 bytes as a single 256-bit word
 // When st_ub_col_idx == 3 (write phase), output accumulated bytes [byte2, byte1, byte0]

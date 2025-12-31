@@ -9,6 +9,7 @@ module activation_func (
     input  logic        rst_n,
     input  logic        valid_in,
     input  logic signed [31:0] data_in,
+    input  logic        passthrough,  // 1 = passthrough, 0 = ReLU
     output logic        valid_out,
     output logic signed [31:0] data_out
 );
@@ -20,8 +21,9 @@ module activation_func (
             data_out <= 32'sd0;
         end else begin
             valid_out <= valid_in;
-            // ReLU activation: max(0, x)
-            data_out <= (data_in > 0) ? data_in : 32'sd0;
+            // Passthrough mode: pass data through unchanged
+            // ReLU mode: max(0, x)
+            data_out <= passthrough ? data_in : ((data_in > 0) ? data_in : 32'sd0);
         end
     end
 
